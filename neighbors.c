@@ -33,3 +33,16 @@ void print_neighbors() {
         printf("- %s (%s)\n", neighbors[i].id, neighbors[i].ip);
     }
 }
+
+void cleanup_neighbors() {
+    time_t now = time(NULL);
+    int i = 0;
+    while (i < count) {
+        if (now - neighbors[i].last_seen > TIMEOUT_NEIGHBOR) {
+            printf("[-] Voisin perdu : %s\n", neighbors[i].id);
+            neighbors[i] = neighbors[--count]; // Écraser par le dernier
+        } else {
+            i++;
+        }
+    }
+}

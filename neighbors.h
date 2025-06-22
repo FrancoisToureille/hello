@@ -10,3 +10,4 @@ typedef struct {
 void init_neighbors();
 void add_or_update_neighbor(const char* id, const char* ip);
 void print_neighbors();
+void cleanup_neighbors();

@@ -26,7 +26,7 @@ static void* hello_sender(void* arg) {
 
             int yes = 1;
             setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &yes, sizeof(yes));
-            setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, interfaces[i], strlen(interfaces[i]));
+            setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, interfaces[i], strlen(interfaces[i]) + 1);
 
             sendto(sock, router_id, strlen(router_id), 0, (struct sockaddr*)&addr, sizeof(addr));
             close(sock);
@@ -45,6 +45,8 @@ static void* hello_receiver(void* arg) {
         .sin_port = htons(HELLO_PORT),
         .sin_addr.s_addr = htonl(INADDR_ANY)
     };
+    int yes = 1;
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
     bind(sock, (struct sockaddr*)&addr, sizeof(addr));
 
     while (1) {
@@ -55,7 +57,9 @@ static void* hello_receiver(void* arg) {
         if (n > 0) {
             buf[n] = '\0';
             if (strcmp(buf, router_id) != 0) {
-                add_or_update_neighbor(buf, inet_ntoa(sender.sin_addr));
+                char ip_str[INET_ADDRSTRLEN];
+                inet_ntop(AF_INET, &sender.sin_addr, ip_str, sizeof(ip_str));
+                add_or_update_neighbor(buf, ip_str);            
             }
         }
     }
