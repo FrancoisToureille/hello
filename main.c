@@ -17,9 +17,9 @@ int main() {
     start_hello();
 
     while (running) {
-    sleep(10);
-    cleanup_neighbors();
-    print_neighbors();
+        sleep(10);
+        cleanup_neighbors();
+        print_neighbors();
     }
 
 

@@ -38,7 +38,10 @@ static void* hello_sender(void* arg) {
 
 static void* hello_receiver(void* arg) {
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock < 0) perror("recv socket");
+    if (sock < 0) {
+        perror("recv socket");
+        return NULL;
+    }
 
     struct sockaddr_in addr = {
         .sin_family = AF_INET,
@@ -47,23 +50,36 @@ static void* hello_receiver(void* arg) {
     };
     int yes = 1;
     setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
-    bind(sock, (struct sockaddr*)&addr, sizeof(addr));
+
+    if (bind(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        perror("bind");
+        close(sock);
+        return NULL;
+    }
 
     while (1) {
         char buf[64];
         struct sockaddr_in sender;
         socklen_t len = sizeof(sender);
+
         int n = recvfrom(sock, buf, sizeof(buf) - 1, 0, (struct sockaddr*)&sender, &len);
         if (n > 0) {
             buf[n] = '\0';
+
+            char sender_ip[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &sender.sin_addr, sender_ip, sizeof(sender_ip));
+
+            printf("[DEBUG] Paquet reçu de %s : '%s'\n", sender_ip, buf);
+
             if (strcmp(buf, router_id) != 0) {
-                char ip_str[INET_ADDRSTRLEN];
-                inet_ntop(AF_INET, &sender.sin_addr, ip_str, sizeof(ip_str));
-                add_or_update_neighbor(buf, ip_str);            
+                add_or_update_neighbor(buf, sender_ip);
             }
         }
     }
+
+    return NULL;
 }
+
 
 void start_hello() {
     pthread_t tx, rx;
