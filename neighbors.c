@@ -1,13 +1,10 @@
 #pragma once
 
-#include "config.h"           // Pour MAX_NAME_LEN, MAX_NEIGHBORS, TIMEOUT_NEIGHBOR
 #include <netinet/in.h>   
 
 #include "neighbors.h"
 #include <string.h>
 #include <stdio.h>
-#include <time.h>
-
 static Neighbor neighbors[MAX_NEIGHBORS];
 static int count = 0;
 

@@ -1,4 +1,7 @@
 #pragma once
+
+#include "config.h"
+#include <arpa/inet.h>      // ← Pour INET_ADDRSTRLEN
 #include <time.h>
 
 typedef struct {
