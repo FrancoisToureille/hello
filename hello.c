@@ -69,10 +69,15 @@ static void* hello_receiver(void* arg) {
             char sender_ip[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &sender.sin_addr, sender_ip, sizeof(sender_ip));
 
-            printf("[DEBUG] Paquet reçu de %s : '%s'\n", sender_ip, buf);
+            char clean_id[MAX_NAME_LEN];
+            sscanf(buf, "%31s", clean_id);  // nettoyage sécurisé
 
-            if (strcmp(buf, router_id) != 0) {
-                add_or_update_neighbor(buf, sender_ip);
+            printf("[DEBUG] Paquet reçu de %s : '%s'\n", sender_ip, clean_id);
+
+            if (strcmp(clean_id, router_id) != 0) {
+                add_or_update_neighbor(clean_id, sender_ip);
+            } else {
+                printf("[INFO] Paquet ignoré (moi-même)\n");
             }
         }
     }
