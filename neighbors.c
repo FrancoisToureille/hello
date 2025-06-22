@@ -1,3 +1,8 @@
+#pragma once
+
+#include "config.h"           // Pour MAX_NAME_LEN, MAX_NEIGHBORS, TIMEOUT_NEIGHBOR
+#include <netinet/in.h>   
+
 #include "neighbors.h"
 #include <string.h>
 #include <stdio.h>
