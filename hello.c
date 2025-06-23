@@ -163,3 +163,9 @@ void send_network_list(const char* dest_ip) {
     printf("[ROUTING] Envoyé vers %s : %s\n", dest_ip, buffer);
     close(sock);
 }
+
+void start_hello() {
+    pthread_t tx, rx;
+    pthread_create(&tx, NULL, hello_sender, NULL);
+    pthread_create(&rx, NULL, hello_receiver, NULL);
+}
