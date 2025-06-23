@@ -30,9 +30,9 @@ void add_or_update_neighbor(const char* id, const char* ip) {
 }
 
 void print_neighbors() {
-    printf("=== Voisins connus ===\n");
+    // printf("=== Voisins connus ===\n");
     for (int i = 0; i < count; ++i) {
-        printf("- %s (%s)\n", neighbors[i].id, neighbors[i].ip);
+        // printf("- %s (%s)\n", neighbors[i].id, neighbors[i].ip);
     }
 }
 

@@ -127,7 +127,7 @@ void send_network_list(const char* dest_ip) {
     getifaddrs(&ifaddr);
 
     char buffer[512];
-    snprintf(buffer, sizeof(buffer), "%s|", router_id);
+    // snprintf(buffer, sizeof(buffer), "%s|", router_id);
 
     int first = 1;
     for (struct ifaddrs* ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
@@ -149,7 +149,7 @@ void send_network_list(const char* dest_ip) {
             cidr += (m & 0x80000000) ? 1 : 0;
 
         char cidr_str[32];
-        snprintf(cidr_str, sizeof(cidr_str), "%s/%d:%d", inet_ntoa(net_addr), cidr, 1);
+        // snprintf(cidr_str, sizeof(cidr_str), "%s/%d:%d", inet_ntoa(net_addr), cidr, 1);
 
         if (!first)
             strcat(buffer, ",");
@@ -160,7 +160,7 @@ void send_network_list(const char* dest_ip) {
     freeifaddrs(ifaddr);
 
     sendto(sock, buffer, strlen(buffer), 0, (struct sockaddr*)&addr, sizeof(addr));
-    printf("[ROUTING] Envoyé vers %s : %s\n", dest_ip, buffer);
+    // printf("[ROUTING] Envoyé vers %s : %s\n", dest_ip, buffer);
     close(sock);
 }
 

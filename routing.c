@@ -29,10 +29,11 @@ void add_or_update_route(const char* network, const char* via, int hops) {
 }
 
 void print_routing_table() {
-    printf("=== Table de routage ===\n");
+    // printf("=== Table de routage ===\n");
     for (int i = 0; i < route_count; ++i) {
+        /**
         printf("- %s via %s (%d saut(s))\n", routing_table[i].network,
-               routing_table[i].next_hop, routing_table[i].hops);
+               routing_table[i].next_hop, routing_table[i].hops);**/
     }
 }
 
