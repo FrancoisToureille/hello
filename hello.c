@@ -15,6 +15,23 @@
 static void* hello_sender(void* arg) {
     while (1) {
         struct ifaddrs* ifaddr;
+        printf("[DEBUG] Interfaces visibles par getifaddrs :\n");
+        for (struct ifaddrs* ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+            if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET) {
+                struct sockaddr_in* addr = (struct sockaddr_in*)ifa->ifa_addr;
+                struct sockaddr_in* bcast = (struct sockaddr_in*)ifa->ifa_broadaddr;
+
+                printf(" - %s: inet=%s", ifa->ifa_name, inet_ntoa(addr->sin_addr));
+
+                if (bcast)
+                    printf(", bcast=%s", inet_ntoa(bcast->sin_addr));
+                else
+                    printf(", bcast=<NULL>");
+
+                printf("\n");
+            }
+        }
+
         getifaddrs(&ifaddr);
 
         for (int i = 0; i < interface_count; ++i) {
