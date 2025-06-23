@@ -1,5 +1,7 @@
 #pragma once
 
+#include <netinet/in.h>  // ou <arpa/inet.h> pour INET_ADDRSTRLEN
+
 #define MAX_INTERFACES 10
 #define MAX_NAME_LEN 32
 #define MAX_NEIGHBORS 32
