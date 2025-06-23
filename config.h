@@ -10,5 +10,6 @@
 extern char router_id[MAX_NAME_LEN];
 extern char interfaces[MAX_INTERFACES][MAX_NAME_LEN];
 extern int interface_count;
+extern char broadcasts[MAX_INTERFACES][INET_ADDRSTRLEN];
 
 void load_config(const char* filename);

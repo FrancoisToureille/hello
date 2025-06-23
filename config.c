@@ -6,6 +6,7 @@
 char router_id[MAX_NAME_LEN];
 char interfaces[MAX_INTERFACES][MAX_NAME_LEN];
 int interface_count = 0;
+char broadcasts[MAX_INTERFACES][INET_ADDRSTRLEN] = {{0}};
 
 void load_config(const char* filename) {
     FILE* f = fopen(filename, "r");
@@ -26,7 +27,21 @@ void load_config(const char* filename) {
                 ifname = strtok(NULL, ", \n");
             }
         }
+
+        if (strncmp(line, "broadcast.", 10) == 0) {
+            char ifname[MAX_NAME_LEN];
+            char ip[INET_ADDRSTRLEN];
+            if (sscanf(line, "broadcast.%[^=] = %s", ifname, ip) == 2) {
+                for (int i = 0; i < interface_count; ++i) {
+                    if (strcmp(interfaces[i], ifname) == 0) {
+                        strncpy(broadcasts[i], ip, INET_ADDRSTRLEN);
+                        break;
+                    }
+                }
+            }
+        }
     }
+    
 
     fclose(f);
 }

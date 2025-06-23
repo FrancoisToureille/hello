@@ -15,28 +15,12 @@
 static void* hello_sender(void* arg) {
     while (1) {
         struct ifaddrs* ifaddr;
-        printf("[DEBUG] Interfaces visibles par getifaddrs :\n");
-        for (struct ifaddrs* ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-            if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET) {
-                struct sockaddr_in* addr = (struct sockaddr_in*)ifa->ifa_addr;
-                struct sockaddr_in* bcast = (struct sockaddr_in*)ifa->ifa_broadaddr;
-
-                printf(" - %s: inet=%s", ifa->ifa_name, inet_ntoa(addr->sin_addr));
-
-                if (bcast)
-                    printf(", bcast=%s", inet_ntoa(bcast->sin_addr));
-                else
-                    printf(", bcast=<NULL>");
-
-                printf("\n");
-            }
-        }
-
         getifaddrs(&ifaddr);
 
         for (int i = 0; i < interface_count; ++i) {
             struct in_addr bcast_addr = {0};
 
+            // 1. Chercher une broadcast dynamique via getifaddrs
             for (struct ifaddrs* ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
                 if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET)
                     continue;
@@ -44,18 +28,27 @@ static void* hello_sender(void* arg) {
                 if (strcmp(ifa->ifa_name, interfaces[i]) != 0)
                     continue;
 
-                struct sockaddr_in* bcast = (struct sockaddr_in*)ifa->ifa_broadaddr;
-                if (bcast) {
+                if (ifa->ifa_broadaddr) {
+                    struct sockaddr_in* bcast = (struct sockaddr_in*)ifa->ifa_broadaddr;
                     bcast_addr = bcast->sin_addr;
                     break;
                 }
             }
 
+            // 2. Si non trouvée, utiliser broadcast défini dans router.conf
+            if (bcast_addr.s_addr == 0 && strlen(broadcasts[i]) > 0) {
+                bcast_addr.s_addr = inet_addr(broadcasts[i]);
+                printf("[INFO] Broadcast manuel utilisé pour %s → %s\n",
+                       interfaces[i], broadcasts[i]);
+            }
+
+            // 3. Si toujours rien, ignorer
             if (bcast_addr.s_addr == 0) {
-                printf("[WARN] Pas d'adresse de broadcast trouvée pour %s\n", interfaces[i]);
+                printf("[WARN] Pas d'adresse de broadcast pour %s\n", interfaces[i]);
                 continue;
             }
 
+            // 4. Création socket + envoi
             int sock = socket(AF_INET, SOCK_DGRAM, 0);
             if (sock < 0) continue;
 
