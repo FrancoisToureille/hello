@@ -38,8 +38,7 @@ static void* hello_sender(void* arg) {
             // 2. Si non trouvée, utiliser broadcast défini dans router.conf
             if (bcast_addr.s_addr == 0 && strlen(broadcasts[i]) > 0) {
                 bcast_addr.s_addr = inet_addr(broadcasts[i]);
-                // printf("[INFO] Broadcast manuel utilisé pour %s → %s\n",
-                       interfaces[i], broadcasts[i]);
+                // printf("[INFO] Broadcast manuel utilisé pour %s → %s\n",interfaces[i], broadcasts[i]);
             }
 
             // 3. Si toujours rien, ignorer
@@ -66,9 +65,7 @@ static void* hello_sender(void* arg) {
             if (ret < 0) {
                 perror("[ERREUR] sendto");
             } else {
-                // printf("[DEBUG] Hello envoyé : '%s' via '%s' → %s:%d\n",
-                       router_id, interfaces[i],
-                       inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
+                // printf("[DEBUG] Hello envoyé : '%s' via '%s' → %s:%d\n",router_id, interfaces[i],inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
             }
 
             close(sock);
