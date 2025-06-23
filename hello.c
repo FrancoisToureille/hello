@@ -38,13 +38,13 @@ static void* hello_sender(void* arg) {
             // 2. Si non trouvée, utiliser broadcast défini dans router.conf
             if (bcast_addr.s_addr == 0 && strlen(broadcasts[i]) > 0) {
                 bcast_addr.s_addr = inet_addr(broadcasts[i]);
-                printf("[INFO] Broadcast manuel utilisé pour %s → %s\n",
+                // printf("[INFO] Broadcast manuel utilisé pour %s → %s\n",
                        interfaces[i], broadcasts[i]);
             }
 
             // 3. Si toujours rien, ignorer
             if (bcast_addr.s_addr == 0) {
-                printf("[WARN] Pas d'adresse de broadcast pour %s\n", interfaces[i]);
+                // printf("[WARN] Pas d'adresse de broadcast pour %s\n", interfaces[i]);
                 continue;
             }
 
@@ -66,7 +66,7 @@ static void* hello_sender(void* arg) {
             if (ret < 0) {
                 perror("[ERREUR] sendto");
             } else {
-                printf("[DEBUG] Hello envoyé : '%s' via '%s' → %s:%d\n",
+                // printf("[DEBUG] Hello envoyé : '%s' via '%s' → %s:%d\n",
                        router_id, interfaces[i],
                        inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
             }
@@ -120,9 +120,12 @@ static void* hello_receiver(void* arg) {
 
 
             if (strcmp(clean_id, router_id) != 0) {
-                printf("[DEBUG] Paquet reçu de %s : '%s'\n", sender_ip, clean_id);
+                // printf("[DEBUG] Paquet reçu de %s : '%s'\n", sender_ip, clean_id);
                 add_or_update_neighbor(clean_id, sender_ip);
+                send_network_list(sender_ip);
+
             }
+        
             //  else {
             //     printf("[INFO] Paquet ignoré (moi-même)\n");
             // }
@@ -130,6 +133,62 @@ static void* hello_receiver(void* arg) {
     }
 
     return NULL;
+}
+void send_network_list(const char* dest_ip) {
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) {
+        perror("[ROUTING] socket");
+        return;
+    }
+
+    struct sockaddr_in addr = {
+        .sin_family = AF_INET,
+        .sin_port = htons(ROUTING_PORT),
+        .sin_addr.s_addr = inet_addr(dest_ip)
+    };
+
+    struct ifaddrs* ifaddr;
+    getifaddrs(&ifaddr);
+
+    char buffer[512];
+    snprintf(buffer, sizeof(buffer), "%s|", router_id);
+
+    int first = 1;
+    for (struct ifaddrs* ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET)
+            continue;
+
+        if (ifa->ifa_flags & IFF_LOOPBACK)  // ignorer loopback
+            continue;
+
+        struct sockaddr_in* sa = (struct sockaddr_in*)ifa->ifa_addr;
+        struct sockaddr_in* netmask = (struct sockaddr_in*)ifa->ifa_netmask;
+
+        uint32_t ip = ntohl(sa->sin_addr.s_addr);
+        uint32_t mask = ntohl(netmask->sin_addr.s_addr);
+        uint32_t network = ip & mask;
+
+        struct in_addr net_addr = { .s_addr = htonl(network) };
+
+        // Calcul du préfixe CIDR
+        int cidr = 0;
+        for (uint32_t m = mask; m; m <<= 1)
+            cidr += (m & 0x80000000) ? 1 : 0;
+
+        char cidr_str[32];
+        snprintf(cidr_str, sizeof(cidr_str), "%s/%d", inet_ntoa(net_addr), cidr);
+
+        if (!first)
+            strcat(buffer, ",");
+        strcat(buffer, cidr_str);
+        first = 0;
+    }
+
+    freeifaddrs(ifaddr);
+
+    sendto(sock, buffer, strlen(buffer), 0, (struct sockaddr*)&addr, sizeof(addr));
+    printf("[ROUTING] Envoyé vers %s : %s\n", dest_ip, buffer);
+    close(sock);
 }
 
 
