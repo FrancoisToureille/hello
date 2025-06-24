@@ -7,7 +7,6 @@ if [[ -z "$ROUTER_ID" ]]; then
     echo "Usage: $0 <router_id>" >&2
     exit 1
 fi
-
 echo "router_id = $ROUTER_ID"
 echo -n "interfaces = "
 
