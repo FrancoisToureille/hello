@@ -1113,23 +1113,17 @@ void process_lsa_message(const char *message, const char *sender_ip)
 }
 void update_kernel_routing_table()
 {
-    // Ne supprime que les routes dont le next-hop n'est pas 0.0.0.0 (pas les locales)
-    system("ip route flush table 100");
-
     pthread_mutex_lock(&routing_mutex);
     for (int i = 0; i < route_count; i++)
     {
-        // destination est une IP
-        char cmd[256];
-        // N'ajoute pas de route si next_hop == 0.0.0.0 (c'est une route locale)
-        if (strcmp(routing_table[i].next_hop, "0.0.0.0") == 0)
-            continue;
+        if (strlen(routing_table[i].next_hop) == 0) continue;
 
+        char cmd[256];
         snprintf(cmd, sizeof(cmd),
-                 "ip route replace %s via %s dev %s table 100",
+                 "ip route replace %s via %s",
                  routing_table[i].destination,
-                 routing_table[i].next_hop,
-                 routing_table[i].interface);
+                 routing_table[i].next_hop);
+
         printf("🛣️  Ajout route OSPF : %s\n", cmd);
         int ret = system(cmd);
         if (ret != 0)
@@ -1139,6 +1133,7 @@ void update_kernel_routing_table()
     }
     pthread_mutex_unlock(&routing_mutex);
 }
+
 
 
 // Function to broadcast LSA messages
@@ -1220,6 +1215,7 @@ void check_system_status()
     printf("Interfaces: %d\n", interface_count);
     printf("======================\n");
 }
+
 int main(int argc, char *argv[])
 {
     pthread_t listen_tid, hello_tid, lsa_tid;
