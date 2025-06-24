@@ -37,8 +37,7 @@ void print_routing_table() {
     }
 }
 
-void process_routing_message(const char* message, const char* sender_ip);
-
+void process_routing_message(const char* message, const char* sender_ip) {
     // Format attendu : R2|10.1.0.0/24:1,10.2.0.0/24:2
     char copy[512];
     strncpy(copy, message, sizeof(copy));
