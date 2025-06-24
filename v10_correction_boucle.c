@@ -511,7 +511,7 @@ void *lsa_thread(void *arg)
         {
             if (neighbors[i].link_state == 1)
             {
-                char link_info[128];
+                char link_info[256];
                 snprintf(link_info, sizeof(link_info), "|%s,%s,%d,%d",
                          neighbors[i].router_id, neighbors[i].ip_address,
                          neighbors[i].metric, neighbors[i].bandwidth_mbps);
@@ -1223,7 +1223,7 @@ int main(int argc, char *argv[])
 
     printf("=== Routeur Communication System ===\n");
     printf("🖥️  Routeur: %s\n", hostname);
-    printf("🌐 Réseau broadcast: %s:%d\n", BROADCAST_PORT);
+    printf("🌐 Réseau broadcast: %d\n", BROADCAST_PORT);
     printf("=====================================\n\n");
 
     // ÉTAPE 1: Découvrir les interfaces réseau EN PREMIER
