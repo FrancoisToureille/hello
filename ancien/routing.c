@@ -56,3 +56,29 @@ void process_routing_message(const char* message, const char* sender_ip) {
         entry = strtok(NULL, ",");
     }
 }
+
+void ensure_local_routes()
+{
+    for (int i = 0; i < interface_count; i++) {
+        // Construire le préfixe réseau (ex : 192.168.1.0/24)
+        char prefix[32];
+        strcpy(prefix, interfaces[i].ip_address);
+        char *last_dot = strrchr(prefix, '.');
+        if (last_dot) strcpy(last_dot + 1, "0/24");
+
+        // Vérifier si la route existe déjà
+        char check_cmd[128];
+        snprintf(check_cmd, sizeof(check_cmd),
+            "ip route show | grep -q '^%s '", prefix);
+        int exists = system(check_cmd);
+
+        if (exists != 0) {
+            // Ajouter la route
+            char add_cmd[256];
+            snprintf(add_cmd, sizeof(add_cmd),
+                "ip route add %s dev %s", prefix, interfaces[i].name);
+            printf("🛣️  Ajout de la route locale : %s\n", add_cmd);
+            system(add_cmd);
+        }
+    }
+}
