@@ -12,13 +12,18 @@ void init_routing_table() {
 
 void add_or_update_route(const char* network, const char* via, int hops) {
     for (int i = 0; i < route_count; ++i) {
+        // Même réseau déjà connu
         if (strcmp(routing_table[i].network, network) == 0) {
-            if (routing_table[i].hops <= hops) return;
-            strncpy(routing_table[i].next_hop, via, MAX_NAME_LEN);
-            routing_table[i].hops = hops;
-            return;
+            // Si on a une meilleure route (moins de sauts), on met à jour
+            if (routing_table[i].hops > hops) {
+                strncpy(routing_table[i].next_hop, via, MAX_NAME_LEN);
+                routing_table[i].hops = hops;
+            }
+            return;  // On arrête là dans tous les cas
         }
     }
+
+    // Sinon on ajoute une nouvelle entrée
     if (route_count < MAX_ROUTES) {
         strncpy(routing_table[route_count].network, network, sizeof(routing_table[route_count].network));
         strncpy(routing_table[route_count].next_hop, via, MAX_NAME_LEN);
@@ -26,6 +31,7 @@ void add_or_update_route(const char* network, const char* via, int hops) {
         route_count++;
     }
 }
+
 
 void print_routing_table() {
     printf("=== Table de routage ===\n");
@@ -37,22 +43,25 @@ void print_routing_table() {
 
 
 void process_routing_message(const char* message, const char* sender_ip) {
-    // Format attendu : R2|10.1.0.0/24:1,10.2.0.0/24:2
     char copy[512];
-    strncpy(copy, message, sizeof(copy));
-    copy[sizeof(copy) - 1] = '\\0';
+    strncpy(copy, message, sizeof(copy) - 1);
+    copy[sizeof(copy) - 1] = '\0';
 
     char* sender_id = strtok(copy, "|");
     char* list = strtok(NULL, "");
+
     if (!sender_id || !list) return;
 
     char* entry = strtok(list, ",");
     while (entry) {
         char net[32];
         int hops;
+
         if (sscanf(entry, "%31[^:]:%d", net, &hops) == 2) {
-            add_or_update_route(net, sender_ip, hops + 1);  // utilise l'adresse IP comme passerelle
+            // On ajoute +1 car on passe par sender
+            add_or_update_route(net, sender_id, hops + 1);
         }
+
         entry = strtok(NULL, ",");
     }
 }
