@@ -11,6 +11,6 @@ typedef struct {
 void init_routing_table();
 void add_or_update_route(const char* network, const char* via, int hops);
 void print_routing_table();
-void process_routing_message(const char* message);
+void process_routing_message(const char* message, const char* sender_ip);
 
 #endif
