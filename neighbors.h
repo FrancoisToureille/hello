@@ -1,13 +1,13 @@
 #pragma once
 
-#include "config.h"
-#include <arpa/inet.h>      // ← Pour INET_ADDRSTRLEN
+#include <netinet/in.h>  // pour struct in_addr
 #include <time.h>
+#include "config.h"       // pour MAX_NAME_LEN, INET_ADDRSTRLEN et TIMEOUT_NEIGHBOR
 
 typedef struct {
-    char id[MAX_NAME_LEN];
-    char ip[INET_ADDRSTRLEN];
-    time_t last_seen;
+    char id[MAX_NAME_LEN];              // Identifiant du voisin (ex: R1, R2...)
+    char ip[INET_ADDRSTRLEN];           // Adresse IP du voisin
+    time_t last_seen;                   // Timestamp du dernier Hello reçu
 } Neighbor;
 
 void init_neighbors();

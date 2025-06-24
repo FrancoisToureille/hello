@@ -1,10 +1,8 @@
-#pragma once
-
-#include <netinet/in.h>   
-
 #include "neighbors.h"
 #include <string.h>
 #include <stdio.h>
+#include <time.h>
+
 static Neighbor neighbors[MAX_NEIGHBORS];
 static int count = 0;
 
@@ -20,6 +18,7 @@ void add_or_update_neighbor(const char* id, const char* ip) {
             return;
         }
     }
+
     if (count < MAX_NEIGHBORS) {
         strncpy(neighbors[count].id, id, MAX_NAME_LEN);
         strncpy(neighbors[count].ip, ip, INET_ADDRSTRLEN);
@@ -42,7 +41,7 @@ void cleanup_neighbors() {
     while (i < count) {
         if (now - neighbors[i].last_seen > TIMEOUT_NEIGHBOR) {
             printf("[-] Voisin perdu : %s\n", neighbors[i].id);
-            neighbors[i] = neighbors[--count]; // Écraser par le dernier
+            neighbors[i] = neighbors[--count];  // Remplace par le dernier
         } else {
             i++;
         }

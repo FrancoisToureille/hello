@@ -41,7 +41,6 @@ void load_config(const char* filename) {
             }
         }
     }
-    
 
     fclose(f);
 }

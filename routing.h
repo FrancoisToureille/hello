@@ -1,8 +1,6 @@
 #ifndef ROUTING_H
 #define ROUTING_H
 
-#define MAX_ROUTES 64
-#define MAX_NAME_LEN 32
 
 typedef struct {
     char network[32];
