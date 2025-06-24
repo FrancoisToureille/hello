@@ -1,10 +1,12 @@
 #pragma once
 
-#include <netinet/in.h>  // ou <arpa/inet.h> pour INET_ADDRSTRLEN
+#include <netinet/in.h>  // pour INET_ADDRSTRLEN
 
 #define MAX_INTERFACES 10
 #define MAX_NAME_LEN 32
 #define MAX_NEIGHBORS 32
+#define MAX_ROUTES 64
+
 #define HELLO_PORT 5000
 #define ROUTING_PORT 5001
 #define HELLO_INTERVAL 5

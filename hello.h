@@ -1,11 +1,9 @@
-// hello.h
 #ifndef HELLO_H
 #define HELLO_H
 
-#define HELLO_PORT 12345
-#define HELLO_INTERVAL 5
+#include "config.h"  // pour HELLO_PORT, HELLO_INTERVAL
 
-void start_hello();  // doit être présent ici
-void send_network_list(const char* dest_ip);
+void start_hello();  // Lance les threads hello_sender + hello_receiver
+void send_network_list(const char* dest_ip);  // Envoie les routes locales à un voisin
 
 #endif
