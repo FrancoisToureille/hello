@@ -5,7 +5,7 @@
 #define MAX_INTERFACES 10
 #define MAX_NAME_LEN 32
 #define MAX_NEIGHBORS 32
-#define MAX_ROUTES 64
+#define MAX_ROUTES 128
 
 #define HELLO_PORT 5000
 #define ROUTING_PORT 5001
