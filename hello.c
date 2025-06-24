@@ -2,6 +2,8 @@
 #include "config.h"
 #include "neighbors.h"
 #include "routing.h"
+#include "control_server.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +17,11 @@
 
 static void* hello_sender(void* arg) {
     while (1) {
+        if (is_paused()) {
+            sleep(1);
+            continue;
+        }
+
         struct ifaddrs* ifaddr;
         getifaddrs(&ifaddr);
 
@@ -37,9 +44,7 @@ static void* hello_sender(void* arg) {
                 bcast_addr.s_addr = inet_addr(broadcasts[i]);
             }
 
-            if (bcast_addr.s_addr == 0) {
-                continue;
-            }
+            if (bcast_addr.s_addr == 0) continue;
 
             int sock = socket(AF_INET, SOCK_DGRAM, 0);
             if (sock < 0) continue;
@@ -54,7 +59,7 @@ static void* hello_sender(void* arg) {
                 .sin_addr = bcast_addr
             };
 
-            int ret = sendto(sock, router_id, strlen(router_id), 0, (struct sockaddr*)&addr, sizeof(addr));
+            sendto(sock, router_id, strlen(router_id), 0, (struct sockaddr*)&addr, sizeof(addr));
             close(sock);
         }
 
@@ -86,6 +91,11 @@ static void* hello_receiver(void* arg) {
     }
 
     while (1) {
+        if (is_paused()) {
+            sleep(1);
+            continue;
+        }
+
         char buf[64];
         struct sockaddr_in sender;
         socklen_t len = sizeof(sender);
@@ -111,6 +121,8 @@ static void* hello_receiver(void* arg) {
 }
 
 void send_network_list(const char* dest_ip) {
+    if (is_paused()) return;  // Ne rien envoyer en pause
+
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) {
         perror("[ROUTING] socket");
@@ -151,8 +163,7 @@ void send_network_list(const char* dest_ip) {
         char cidr_str[32];
         snprintf(cidr_str, sizeof(cidr_str), "%s/%d:%d", inet_ntoa(net_addr), cidr, 1);
 
-        if (!first)
-            strcat(buffer, ",");
+        if (!first) strcat(buffer, ",");
         strcat(buffer, cidr_str);
         first = 0;
     }
