@@ -59,8 +59,10 @@ int main() {
             int n = recvfrom(routing_sock, buf, sizeof(buf) - 1, MSG_DONTWAIT,
                              (struct sockaddr*)&sender, &len);
             if (n > 0) {
-                buf[n] = '\0';
-                process_routing_message(buf);
+                buf[n] = '\\0';
+                char sender_ip[INET_ADDRSTRLEN];
+                inet_ntop(AF_INET, &sender.sin_addr, sender_ip, sizeof(sender_ip));
+                process_routing_message(buf, sender_ip);
             }
 
             cleanup_neighbors();
