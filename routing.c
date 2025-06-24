@@ -1,6 +1,6 @@
 // routing.c
-#include "routing.h"
 #include "config.h"
+#include "routing.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
