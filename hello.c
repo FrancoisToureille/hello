@@ -14,6 +14,7 @@
 #include <net/if.h>
 #include <netinet/in.h>
 #include <ifaddrs.h>
+#include <fcntl.h>
 
 static void* hello_sender(void* arg) {
     while (1) {
@@ -44,7 +45,9 @@ static void* hello_sender(void* arg) {
                 bcast_addr.s_addr = inet_addr(broadcasts[i]);
             }
 
-            if (bcast_addr.s_addr == 0) continue;
+            if (bcast_addr.s_addr == 0) {
+                continue;
+            }
 
             int sock = socket(AF_INET, SOCK_DGRAM, 0);
             if (sock < 0) continue;
@@ -76,11 +79,15 @@ static void* hello_receiver(void* arg) {
         return NULL;
     }
 
+    // NON BLOQUANT
+    fcntl(sock, F_SETFL, O_NONBLOCK);
+
     struct sockaddr_in addr = {
         .sin_family = AF_INET,
         .sin_port = htons(HELLO_PORT),
         .sin_addr.s_addr = htonl(INADDR_ANY)
     };
+
     int yes = 1;
     setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
 
@@ -115,13 +122,15 @@ static void* hello_receiver(void* arg) {
                 send_network_list(sender_ip);
             }
         }
+
+        usleep(100000);  // 100ms pour réduire la charge CPU
     }
 
     return NULL;
 }
 
 void send_network_list(const char* dest_ip) {
-    if (is_paused()) return;  // Ne rien envoyer en pause
+    if (is_paused()) return;
 
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) {
@@ -163,7 +172,8 @@ void send_network_list(const char* dest_ip) {
         char cidr_str[32];
         snprintf(cidr_str, sizeof(cidr_str), "%s/%d:%d", inet_ntoa(net_addr), cidr, 1);
 
-        if (!first) strcat(buffer, ",");
+        if (!first)
+            strcat(buffer, ",");
         strcat(buffer, cidr_str);
         first = 0;
     }
@@ -171,7 +181,6 @@ void send_network_list(const char* dest_ip) {
     freeifaddrs(ifaddr);
 
     sendto(sock, buffer, strlen(buffer), 0, (struct sockaddr*)&addr, sizeof(addr));
-    printf("[ROUTING] Envoyé vers %s : %s\n", dest_ip, buffer);
     close(sock);
 }
 

@@ -38,7 +38,6 @@ void print_routing_table() {
 }
 
 void process_routing_message(const char* message, const char* sender_ip) {
-    // Format attendu : R2|10.1.0.0/24:1,10.2.0.0/24:2
     char copy[512];
     strncpy(copy, message, sizeof(copy));
     copy[sizeof(copy) - 1] = '\0';
@@ -52,7 +51,7 @@ void process_routing_message(const char* message, const char* sender_ip) {
         char net[32];
         int hops;
         if (sscanf(entry, "%31[^:]:%d", net, &hops) == 2) {
-            add_or_update_route(net, sender, hops);
+            add_or_update_route(net, sender, hops);  // <- Correction ici
         }
         entry = strtok(NULL, ",");
     }
