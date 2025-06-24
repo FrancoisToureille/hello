@@ -1,4 +1,3 @@
-#define _POSIX_C_SOURCE 200809L
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,12 +10,12 @@
 #include <errno.h>
 #include <time.h>
 #include <pthread.h>
+#include <fcntl.h>
 #include <sys/select.h>
 #include <limits.h>
 
 #define BROADCAST_PORT 8080
 #define BUFFER_SIZE 1024
-#define BROADCAST_IP "10.1.0.255"
 // Ajoutez ces définitions après les #define existants
 #define MAX_NEIGHBORS 10
 #define MAX_INTERFACES 5
@@ -140,6 +139,7 @@ int create_broadcast_socket()
     int reuse = 1;
 
     sock = socket(AF_INET, SOCK_DGRAM, 0);
+    fcntl(sock, F_SETFL, O_NONBLOCK); // rendre non-bloquant
     if (sock < 0)
     {
         perror("Erreur création socket");
@@ -286,7 +286,7 @@ int send_message(const char *message)
     memset(&broadcast_addr, 0, sizeof(broadcast_addr));
     broadcast_addr.sin_family = AF_INET;
     broadcast_addr.sin_port = htons(BROADCAST_PORT);
-    broadcast_addr.sin_addr.s_addr = inet_addr(BROADCAST_IP);
+    broadcast_addr.sin_addr.s_addr = inet_addr(interfaces[0].broadcast_ip); // première interface
 
     if (sendto(broadcast_sock, full_message, strlen(full_message), 0,
                (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr)) < 0)
@@ -1223,7 +1223,7 @@ int main(int argc, char *argv[])
 
     printf("=== Routeur Communication System ===\n");
     printf("🖥️  Routeur: %s\n", hostname);
-    printf("🌐 Réseau broadcast: %s:%d\n", BROADCAST_IP, BROADCAST_PORT);
+    printf("🌐 Réseau broadcast: %s:%d\n", BROADCAST_PORT);
     printf("=====================================\n\n");
 
     // ÉTAPE 1: Découvrir les interfaces réseau EN PREMIER
