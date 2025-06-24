@@ -1,11 +1,15 @@
 //main.c
+#include <stdio.h>      // printf, perror, fflush, stdin, stdout
 #include "types.h"
 #include "view.h"
 #include "hello.h"
 #include "lsa.h"
 #include "routing.h"
 #include "control.h"
-
+#include <stdlib.h>     // system, exit
+#include <string.h>     // strcpy, strcmp, strcspn, strlen
+#include <unistd.h>     // close, sleep, gethostname
+#include <signal.h>     // signal, SIGINT, SIGTERM
 // déclarations globales
 neighbor_t neighbors[MAX_NEIGHBORS];
 interface_t interfaces[MAX_INTERFACES];
