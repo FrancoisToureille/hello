@@ -803,7 +803,6 @@ void calculate_shortest_paths()
     printf("🗺️  Table de routage mise à jour (%d routes calculées avec Dijkstra)\n", route_count);
 }
 
-// Fonction pour créer notre propre LSA dans la base de données
 void initialize_own_lsa()
 {
     char hostname[256];
@@ -839,7 +838,7 @@ void initialize_own_lsa()
         topology_db[our_lsa_index].timestamp = time(NULL);
         topology_db[our_lsa_index].num_links = 0;
 
-                // Ajouter nos voisins directs
+        // Ajouter nos voisins directs
         pthread_mutex_lock(&neighbor_mutex);
         for (int i = 0; i < neighbor_count && topology_db[our_lsa_index].num_links < MAX_NEIGHBORS; i++)
         {
@@ -848,29 +847,36 @@ void initialize_own_lsa()
                 int link_idx = topology_db[our_lsa_index].num_links;
                 topology_db[our_lsa_index].links[link_idx] = neighbors[i];
                 topology_db[our_lsa_index].num_links++;
+                printf("🤝 LSA: voisin %s (%s)\n",
+                       neighbors[i].router_id,
+                       neighbors[i].ip_address);
             }
         }
         pthread_mutex_unlock(&neighbor_mutex);
 
-        // ✅ Ajouter nos propres interfaces comme liens locaux
+        // Ajouter nos propres interfaces locales
         for (int i = 0; i < interface_count && topology_db[our_lsa_index].num_links < MAX_NEIGHBORS; i++)
         {
-            neighbor_t local_link;
-            memset(&local_link, 0, sizeof(local_link));
-            strncpy(local_link.router_id, hostname, sizeof(local_link.router_id) - 1);
-            strncpy(local_link.ip_address, interfaces[i].ip_address, sizeof(local_link.ip_address) - 1);
-            strncpy(local_link.interface, interfaces[i].name, sizeof(local_link.interface) - 1);
-            local_link.metric = 0;
-            local_link.bandwidth_mbps = 1000;
-            local_link.link_state = 1;
+            neighbor_t link;
+            memset(&link, 0, sizeof(link));
+            strncpy(link.router_id, hostname, sizeof(link.router_id) - 1);
+            strncpy(link.ip_address, interfaces[i].ip_address, sizeof(link.ip_address) - 1);
+            strncpy(link.interface, interfaces[i].name, sizeof(link.interface) - 1);
+            link.metric = 0;
+            link.bandwidth_mbps = 1000;
+            link.link_state = 1;
 
-            topology_db[our_lsa_index].links[topology_db[our_lsa_index].num_links++] = local_link;
+            topology_db[our_lsa_index].links[topology_db[our_lsa_index].num_links++] = link;
+
+            printf("🌐 LSA: interface locale %s (%s)\n",
+                   interfaces[i].name,
+                   interfaces[i].ip_address);
         }
-
     }
 
     pthread_mutex_unlock(&topology_mutex);
 }
+
 
 // Fonction pour afficher la table des voisins
 void show_neighbors()
