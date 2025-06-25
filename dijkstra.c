@@ -199,7 +199,7 @@ void calculate_shortest_paths()
     run_dijkstra(nodes, node_count);
 
     // build_routing_table() à implémenter : construit table_routage à partir des nodes calculés
-    build_routing_table(nodes, node_count, source_index);
+    construire_table_routage(nodes, node_count, source_index);
 
     unlock_all_mutexes();
 

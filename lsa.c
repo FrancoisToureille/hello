@@ -326,23 +326,3 @@ void broadcast_lsa(const char *lsa_message)
         }
     }
 }
-
-int create_broadcast_socket()
-{
-    int sock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock < 0)
-    {
-        perror("socket");
-        return -1;
-    }
-
-    int broadcast_enable = 1;
-    if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &broadcast_enable, sizeof(broadcast_enable)) < 0)
-    {
-        perror("setsockopt SO_BROADCAST");
-        close(sock);
-        return -1;
-    }
-
-    return sock;
-}

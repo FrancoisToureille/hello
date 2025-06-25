@@ -16,9 +16,9 @@
 #define MAX_INTERFACES NB_MAX_INTERFACES // Pour cohérence
 
 // Variables globales externes à définir dans un autre fichier .c
-extern volatile int running;
-extern int broadcast_sock;
-extern int listen_sock;
+extern volatile int en_fonctionnement;
+extern int socket_diffusion;
+extern int socket_ecoute;
 
 extern interface_reseau_t interfaces[NB_MAX_INTERFACES];
 extern int nombre_interfaces;
@@ -34,13 +34,13 @@ void signal_handler(int sig)
     running = 0;
     printf("\nArrêt en cours..\n");
 
-    if (broadcast_sock >= 0)
+    if (socket_diffusion >= 0)
     {
-        close(broadcast_sock);
+        close(socket_diffusion);
     }
-    if (listen_sock >= 0)
+    if (socket_ecoute >= 0)
     {
-        close(listen_sock);
+        close(socket_ecoute);
     }
 }
 
@@ -69,8 +69,8 @@ void *listen_thread(void *arg)
     fd_set readfds;
     struct timeval timeout;
 
-    listen_sock = create_broadcast_socket();
-    if (listen_sock < 0)
+    socket_ecoute = create_broadcast_socket();
+    if (socket_ecoute < 0)
     {
         pthread_exit(NULL);
     }
@@ -80,10 +80,10 @@ void *listen_thread(void *arg)
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(BROADCAST_PORT);
 
-    if (bind(listen_sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
+    if (bind(socket_ecoute, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
     {
         perror("Erreur bind");
-        close(listen_sock);
+        close(socket_ecoute);
         pthread_exit(NULL);
     }
 
@@ -92,12 +92,12 @@ void *listen_thread(void *arg)
     while (running)
     {
         FD_ZERO(&readfds);
-        FD_SET(listen_sock, &readfds);
+        FD_SET(socket_ecoute, &readfds);
 
         timeout.tv_sec = 1;
         timeout.tv_usec = 0;
 
-        int select_result = select(listen_sock + 1, &readfds, NULL, NULL, &timeout);
+        int select_result = select(socket_ecoute + 1, &readfds, NULL, NULL, &timeout);
 
         if (select_result < 0)
         {
@@ -113,9 +113,9 @@ void *listen_thread(void *arg)
             continue;
         }
 
-        if (FD_ISSET(listen_sock, &readfds))
+        if (FD_ISSET(socket_ecoute, &readfds))
         {
-            bytes_received = recvfrom(listen_sock, buffer, BUFFER_SIZE - 1, 0,
+            bytes_received = recvfrom(socket_ecoute, buffer, BUFFER_SIZE - 1, 0,
                                       (struct sockaddr *)&client_addr, &client_len);
 
             if (bytes_received > 0)
@@ -149,8 +149,8 @@ void *listen_thread(void *arg)
         }
     }
 
-    close(listen_sock);
-    listen_sock = -1;
+    close(socket_ecoute);
+    socket_ecoute = -1;
     pthread_exit(NULL);
 }
 
@@ -171,7 +171,7 @@ int send_message(const char *message)
     broadcast_addr.sin_port = htons(BROADCAST_PORT);
     broadcast_addr.sin_addr.s_addr = inet_addr(BROADCAST_IP);
 
-    if (sendto(broadcast_sock, full_message, strlen(full_message), 0,
+    if (sendto(socket_diffusion, full_message, strlen(full_message), 0,
                (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr)) < 0)
     {
         if (running)
