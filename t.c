@@ -720,74 +720,97 @@ void run_dijkstra(dijkstra_node_t *nodes, int node_count)
 }
 
 void build_routing_table(dijkstra_node_t *nodes, int node_count, int source_index) {
+    pthread_mutex_lock(&routing_mutex);
     route_count = 0;
-    // Pour chaque routeur distant (hors soi-même)
+
     for (int i = 0; i < node_count; i++) {
-        if (i == source_index) continue;
+        if (i == source_index || nodes[i].distance == INT_MAX) continue;
+        if (strlen(nodes[i].next_hop) == 0) continue;
 
-        // Trouver le LSA correspondant dans la LSDB
+        lsa_t *router_lsa = NULL;
         for (int j = 0; j < topology_db_size; j++) {
-            if (strcmp(topology_db[j].router_id, nodes[i].router_id) != 0) continue;
-
-            // Pour chaque interface de ce routeur distant
-            for (int k = 0; k < topology_db[j].num_links; k++) {
-                const char *dest_ip = topology_db[j].links[k].ip_address;
-
-                // Vérifie que ce n'est pas une de nos propres interfaces
-                int is_own_ip = 0;
-                for (int m = 0; m < interface_count; m++) {
-                    if (strcmp(dest_ip, interfaces[m].ip_address) == 0) {
-                        is_own_ip = 1;
-                        break;
-                    }
-                }
-                if (is_own_ip)
-                    continue;
-
-                // Calcule le préfixe réseau (ex: 10.1.0.0/24)
-                char prefix[32];
-                strcpy(prefix, dest_ip);
-                char *last_dot = strrchr(prefix, '.');
-                if (last_dot) strcpy(last_dot + 1, "0/24");
-
-                // Vérifie qu'on n'a pas déjà ajouté cette destination (évite les doublons)
-                int already = 0;
-                for (int r = 0; r < route_count; r++) {
-                    if (strcmp(routing_table[r].destination, prefix) == 0) {
-                        already = 1;
-                        break;
-                    }
-                }
-                if (already)
-                    continue;
-
-                // Vérifie que ce n'est pas un de nos propres réseaux locaux
-                int is_own_network = 0;
-                for (int m = 0; m < interface_count; m++) {
-                    char local_prefix[32];
-                    strcpy(local_prefix, interfaces[m].ip_address);
-                    char *last_dot = strrchr(local_prefix, '.');
-                    if (last_dot) strcpy(last_dot + 1, "0/24");
-                    if (strcmp(prefix, local_prefix) == 0) {
-                        is_own_network = 1;
-                        break;
-                    }
-                }
-                if (is_own_network)
-                    continue;
-
-                // Ajoute la route
-                if (route_count < MAX_ROUTES) {
-                    strcpy(routing_table[route_count].destination, prefix);
-                    strcpy(routing_table[route_count].next_hop, nodes[i].next_hop);
-                    strcpy(routing_table[route_count].interface, nodes[i].interface);
-                    routing_table[route_count].metric = nodes[i].distance + topology_db[j].links[k].metric;
-                    routing_table[route_count].hop_count = (routing_table[route_count].metric + 999) / 1000;
-                    routing_table[route_count].bandwidth = topology_db[j].links[k].bandwidth_mbps;
-                    route_count++;
-                }
+            if (strcmp(topology_db[j].router_id, nodes[i].router_id) == 0) {
+                router_lsa = &topology_db[j];
+                break;
             }
         }
+        if (!router_lsa) continue;
+
+        for (int k = 0; k < router_lsa->num_links; k++) {
+            const char *dest_ip = router_lsa->links[k].ip_address;
+
+            // 🔁 Ne pas ajouter une route vers soi-même
+            if (strcmp(router_lsa->links[k].router_id, nodes[source_index].router_id) == 0) {
+                continue;
+            }
+
+            // 🔍 Vérifie que ce n'est pas l'une de nos propres interfaces
+            int skip = 0;
+            for (int m = 0; m < interface_count; m++) {
+                if (strcmp(dest_ip, interfaces[m].ip_address) == 0) {
+                    skip = 1;
+                    break;
+                }
+            }
+            if (skip) continue;
+
+            // 🔄 Obtenir le /24 réseau à partir de l'IP
+            struct in_addr addr;
+            if (inet_aton(dest_ip, &addr) == 0) continue;
+            uint32_t ip = ntohl(addr.s_addr);
+            ip &= 0xFFFFFF00; // masque /24
+            addr.s_addr = htonl(ip);
+            char dest_network[32];
+            snprintf(dest_network, sizeof(dest_network), "%s/24", inet_ntoa(addr));
+
+            // 🔍 S'assurer que ce n’est pas déjà une route locale
+            int is_local_network = 0;
+            for (int m = 0; m < interface_count; m++) {
+                struct in_addr local;
+                if (inet_aton(interfaces[m].ip_address, &local) == 0) continue;
+                uint32_t lip = ntohl(local.s_addr) & 0xFFFFFF00;
+                if (lip == ip) {
+                    is_local_network = 1;
+                    break;
+                }
+            }
+            if (is_local_network) continue;
+
+            // 🚫 Éviter doublons ou mettre à jour meilleure route
+            int found = 0;
+            for (int r = 0; r < route_count; r++) {
+                if (strcmp(routing_table[r].destination, dest_network) == 0) {
+                    if (routing_table[r].metric > (nodes[i].distance + router_lsa->links[k].metric)) {
+                        strcpy(routing_table[r].next_hop, nodes[i].next_hop);
+                        strcpy(routing_table[r].interface, nodes[i].interface);
+                        routing_table[r].metric = nodes[i].distance + router_lsa->links[k].metric;
+                        routing_table[r].hop_count = (routing_table[r].metric + 999) / 1000;
+                        routing_table[r].bandwidth = router_lsa->links[k].bandwidth_mbps;
+                    }
+                    found = 1;
+                    break;
+                }
+            }
+
+            if (!found && route_count < MAX_ROUTES) {
+                strcpy(routing_table[route_count].destination, dest_network);
+                strcpy(routing_table[route_count].next_hop, nodes[i].next_hop);
+                strcpy(routing_table[route_count].interface, nodes[i].interface);
+                routing_table[route_count].metric = nodes[i].distance + router_lsa->links[k].metric;
+                routing_table[route_count].hop_count = (routing_table[route_count].metric + 999) / 1000;
+                routing_table[route_count].bandwidth = router_lsa->links[k].bandwidth_mbps;
+                route_count++;
+            }
+        }
+    }
+
+    pthread_mutex_unlock(&routing_mutex);
+
+    printf("🔧 DEBUG: %d routes construites\n", route_count);
+    for (int i = 0; i < route_count; i++) {
+        printf("  Route %d: %s via %s dev %s (métrique: %d)\n", 
+               i, routing_table[i].destination, routing_table[i].next_hop, 
+               routing_table[i].interface, routing_table[i].metric);
     }
 }
 
@@ -1232,11 +1255,7 @@ int main(int argc, char *argv[])
 
     printf("=== Routeur Communication System ===\n");
     printf("🖥️  Routeur: %s\n", hostname);
-    for (int i = 0; i < interface_count; i++) {
-    printf("🌐 Interface %s -> broadcast %s:%d\n", interfaces[i].name, interfaces[i].broadcast_ip, BROADCAST_PORT);
-    }    
-    printf("=====================================\n\n");
-
+    
     // ÉTAPE 1: Découvrir les interfaces réseau EN PREMIER
     printf("🔍 Découverte des interfaces réseau...\n");
     if (discover_interfaces() <= 0)
@@ -1244,6 +1263,11 @@ int main(int argc, char *argv[])
         printf("❌ Aucune interface réseau découverte\n");
         return 1;
     }
+    for (int i = 0; i < interface_count; i++) {
+    printf("🌐 Interface %s -> broadcast %s:%d\n", interfaces[i].name, interfaces[i].broadcast_ip, BROADCAST_PORT);
+    }    
+    printf("=====================================\n\n");
+
 
     ensure_local_routes();
 
