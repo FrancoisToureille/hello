@@ -16,7 +16,6 @@
 
 #define BROADCAST_PORT 8080
 #define BUFFER_SIZE 1024
-#define BROADCAST_IP "10.1.0.255"
 // Ajoutez ces définitions après les #define existants
 #define MAX_NEIGHBORS 10
 #define MAX_INTERFACES 5
@@ -269,36 +268,39 @@ void *listen_thread(void *arg)
 
 int send_message(const char *message)
 {
-    struct sockaddr_in broadcast_addr;
-    char hostname[256];
-    char full_message[BUFFER_SIZE];
-
     if (!running)
-        return -1; // Ne pas envoyer si arrêt en cours
+        return -1;
 
+    char hostname[256];
     if (gethostname(hostname, sizeof(hostname)) != 0)
-    {
         strcpy(hostname, "Unknown");
-    }
 
+    char full_message[BUFFER_SIZE];
     snprintf(full_message, sizeof(full_message), "[%s] %s", hostname, message);
 
-    memset(&broadcast_addr, 0, sizeof(broadcast_addr));
-    broadcast_addr.sin_family = AF_INET;
-    broadcast_addr.sin_port = htons(BROADCAST_PORT);
-    broadcast_addr.sin_addr.s_addr = inet_addr(BROADCAST_IP);
+    for (int i = 0; i < interface_count; i++) {
+        if (!interfaces[i].is_active) continue;
 
-    if (sendto(broadcast_sock, full_message, strlen(full_message), 0,
-               (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr)) < 0)
-    {
-        if (running)
-        { // Ne pas afficher l'erreur si arrêt en cours
-            perror("Erreur sendto");
+        struct sockaddr_in broadcast_addr;
+        memset(&broadcast_addr, 0, sizeof(broadcast_addr));
+        broadcast_addr.sin_family = AF_INET;
+        broadcast_addr.sin_port = htons(BROADCAST_PORT);
+        broadcast_addr.sin_addr.s_addr = inet_addr(interfaces[i].broadcast_ip);
+
+        int sock = create_broadcast_socket();
+        if (sock < 0) continue;
+
+        if (sendto(sock, full_message, strlen(full_message), 0,
+                   (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr)) < 0)
+        {
+            if (running) perror("Erreur sendto dans send_message()");
+        } else {
+            printf("✅ Message envoyé sur %s : %s\n", interfaces[i].broadcast_ip, message);
         }
-        return -1;
+
+        close(sock);
     }
 
-    printf("✅ Message envoyé: %s\n", message);
     return 0;
 }
 // Function to discover network interfaces
@@ -1223,7 +1225,9 @@ int main(int argc, char *argv[])
 
     printf("=== Routeur Communication System ===\n");
     printf("🖥️  Routeur: %s\n", hostname);
-    printf("🌐 Réseau broadcast: %s:%d\n", BROADCAST_IP, BROADCAST_PORT);
+    for (int i = 0; i < interface_count; i++) {
+    printf("🌐 Interface %s -> broadcast %s:%d\n", interfaces[i].name, interfaces[i].broadcast_ip, BROADCAST_PORT);
+    }    
     printf("=====================================\n\n");
 
     // ÉTAPE 1: Découvrir les interfaces réseau EN PREMIER
