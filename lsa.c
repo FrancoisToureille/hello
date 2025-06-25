@@ -11,6 +11,7 @@
 #include "hello.h"
 #include "routing.h"
 #include "control.h"
+#include "dijkstra.h"
 
 // Thread pour échanger les LSA - CORRIGÉ
 void *lsa_thread(void *arg)
