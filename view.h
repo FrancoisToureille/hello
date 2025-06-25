@@ -1,3 +1,3 @@
 #pragma once
-void voirVoisins(void);
-void show_routing_table(void);  
+void afficher_voisins(void);
+void afficher_table_routage(void);  

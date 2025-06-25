@@ -1,118 +1,123 @@
-//routing.C
+// routing.c
 #include "types.h"
 #include "routing.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
-void build_routing_table(dijkstra_node_t *nodes, int node_count, int source_index) {
-    route_count = 0;
-    // Pour chaque routeur distant (hors soi-même)
-    for (int i = 0; i < node_count; i++) {
-        if (i == source_index) continue;
 
-        // Trouver le LSA correspondant dans la LSDB
-        for (int j = 0; j < topology_db_size; j++) {
-            if (strcmp(topology_db[j].router_id, nodes[i].router_id) != 0) continue;
+void construire_table_routage(dijkstra_node_t *noeuds, int nb_noeuds, int index_source) {
+    nombre_routes = 0;
 
-            // Pour chaque interface de ce routeur distant
-            for (int k = 0; k < topology_db[j].num_links; k++) {
-                const char *dest_ip = topology_db[j].links[k].ip_address;
+    for (int i = 0; i < nb_noeuds; i++) {
+        if (i == index_source) continue;
 
-                // Vérifie que ce n'est pas une de nos propres interfaces
-                int is_own_ip = 0;
-                for (int m = 0; m < interface_count; m++) {
-                    if (strcmp(dest_ip, interfaces[m].ip_address) == 0) {
-                        is_own_ip = 1;
+        // Chercher le LSA correspondant dans la base topologique
+        for (int j = 0; j < taille_topologie; j++) {
+            if (strcmp(topologie_db[j].id_routeur, noeuds[i].id_routeur) != 0) continue;
+
+            // Pour chaque lien du routeur distant
+            for (int k = 0; k < topologie_db[j].nb_liens; k++) {
+                const char *ip_dest = topologie_db[j].liens[k].adresse_ip;
+
+                // Vérifier que ce n'est pas une de nos propres interfaces
+                int est_ip_locale = 0;
+                for (int m = 0; m < nombre_interfaces; m++) {
+                    if (strcmp(ip_dest, interfaces[m].adresse_ip) == 0) {
+                        est_ip_locale = 1;
                         break;
                     }
                 }
-                if (is_own_ip)
+                if (est_ip_locale)
                     continue;
 
-                // Calcule le préfixe réseau (ex: 10.1.0.0/24)
-                char prefix[32];
-                strcpy(prefix, dest_ip);
-                char *last_dot = strrchr(prefix, '.');
-                if (last_dot) strcpy(last_dot + 1, "0/24");
+                // Calculer le préfixe réseau (exemple 10.1.0.0/24)
+                char prefixe[32];
+                strcpy(prefixe, ip_dest);
+                char *dernier_point = strrchr(prefixe, '.');
+                if (dernier_point) strcpy(dernier_point + 1, "0/24");
 
-                // Vérifie qu'on n'a pas déjà ajouté cette destination (évite les doublons)
-                int already = 0;
-                for (int r = 0; r < route_count; r++) {
-                    if (strcmp(routing_table[r].destination, prefix) == 0) {
-                        already = 1;
+                // Vérifier qu'on ne l'a pas déjà ajouté (éviter doublons)
+                int deja_present = 0;
+                for (int r = 0; r < nombre_routes; r++) {
+                    if (strcmp(table_routage[r].destination, prefixe) == 0) {
+                        deja_present = 1;
                         break;
                     }
                 }
-                if (already)
+                if (deja_present)
                     continue;
 
-                // Vérifie que ce n'est pas un de nos propres réseaux locaux
-                int is_own_network = 0;
-                for (int m = 0; m < interface_count; m++) {
-                    char local_prefix[32];
-                    strcpy(local_prefix, interfaces[m].ip_address);
-                    char *last_dot = strrchr(local_prefix, '.');
-                    if (last_dot) strcpy(last_dot + 1, "0/24");
-                    if (strcmp(prefix, local_prefix) == 0) {
-                        is_own_network = 1;
+                // Vérifier que ce n'est pas un réseau local à nous
+                int est_reseau_local = 0;
+                for (int m = 0; m < nombre_interfaces; m++) {
+                    char prefixe_local[32];
+                    strcpy(prefixe_local, interfaces[m].adresse_ip);
+                    char *dernier_point = strrchr(prefixe_local, '.');
+                    if (dernier_point) strcpy(dernier_point + 1, "0/24");
+                    if (strcmp(prefixe, prefixe_local) == 0) {
+                        est_reseau_local = 1;
                         break;
                     }
                 }
-                if (is_own_network)
+                if (est_reseau_local)
                     continue;
 
-                // Ajoute la route
-                if (route_count < MAX_ROUTES) {
-                    strcpy(routing_table[route_count].destination, prefix);
-                    strcpy(routing_table[route_count].next_hop, nodes[i].next_hop);
-                    strcpy(routing_table[route_count].interface, nodes[i].interface);
-                    routing_table[route_count].metric = nodes[i].distance + topology_db[j].links[k].metric;
-                    routing_table[route_count].hop_count = (routing_table[route_count].metric + 999) / 1000;
-                    routing_table[route_count].bandwidth = topology_db[j].links[k].bandwidth_mbps;
-                    route_count++;
+                // Ajouter la route
+                if (nombre_routes < MAX_ROUTES) {
+                    strcpy(table_routage[nombre_routes].destination, prefixe);
+                    strcpy(table_routage[nombre_routes].prochain_saut, noeuds[i].prochain_saut);
+                    strcpy(table_routage[nombre_routes].interface, noeuds[i].interface);
+                    table_routage[nombre_routes].metrique = noeuds[i].distance + topologie_db[j].liens[k].metrique;
+                    table_routage[nombre_routes].nombre_sauts = (table_routage[nombre_routes].metrique + 999) / 1000;
+                    table_routage[nombre_routes].debit = topologie_db[j].liens[k].debit_mbps;
+                    nombre_routes++;
                 }
             }
         }
     }
 }
 
-void update_kernel_routing_table()
+void mettre_a_jour_table_kernel()
 {
-    // Ne supprime que les routes dont le next-hop n'est pas 0.0.0.0 (pas les locales)
+    // Supprimer uniquement les routes non locales (next-hop différent de 0.0.0.0)
     system("ip route flush table 100");
-    pthread_mutex_lock(&routing_mutex);
-    for (int i = 0; i < route_count; i++)
+    pthread_mutex_lock(&mutex_routage);
+
+    for (int i = 0; i < nombre_routes; i++)
     {
-        char cmd[256];
-        if (strcmp(routing_table[i].next_hop, "0.0.0.0") == 0) {
+        char commande[256];
+        if (strcmp(table_routage[i].prochain_saut, "0.0.0.0") == 0) {
             continue;
         }
-        snprintf(cmd, sizeof(cmd),
-         "ip route replace %s via %s dev %s",
-         routing_table[i].destination,
-         routing_table[i].next_hop,
-         routing_table[i].interface);
-        printf("🛣️  Ajout route OSPF : %s\n", cmd);
-        int ret = system(cmd);
-        if (ret != 0) {
-            printf("Echec de l'ajout de la route: %s\n", cmd);
+        snprintf(commande, sizeof(commande),
+                 "ip route replace %s via %s dev %s",
+                 table_routage[i].destination,
+                 table_routage[i].prochain_saut,
+                 table_routage[i].interface);
+        printf("🛣️  Route OSPF ajoutée : %s\n", commande);
+        int retour = system(commande);
+        if (retour != 0) {
+            printf("❌ Échec de l'ajout de la route : %s\n", commande);
         }
     }
-    pthread_mutex_unlock(&routing_mutex);
+
+    pthread_mutex_unlock(&mutex_routage);
 }
 
-void supprimerVoisins()
+void supprimer_voisins_expires()
 {
-    pthread_mutex_lock(&neighbor_mutex);
-    time_t now = time(NULL);
-    for (int i = 0; i < neighbor_count; i++)
+    pthread_mutex_lock(&mutex_voisins);
+    time_t maintenant = time(NULL);
+
+    for (int i = 0; i < nombre_voisins; i++)
     {
-        if (now - neighbors[i].last_hello > NEIGHBOR_TIMEOUT)
+        if (maintenant - voisins[i].dernier_hello > DELAI_EXPIRATION_VOISINS)
         {
-            printf("❌ Voisin expiré: %s\n", neighbors[i].router_id);
-            neighbors[i].link_state = 0;
+            printf("❌ Voisin expiré détecté : %s\n", voisins[i].id_routeur);
+            voisins[i].etat_lien = 0;
         }
     }
-    pthread_mutex_unlock(&neighbor_mutex);
+
+    pthread_mutex_unlock(&mutex_voisins);
 }
