@@ -14,9 +14,8 @@
 void signal_handler(int sig)
 {
     running = 0;
-    printf("\nArrêt du programme...\n");
+    printf("\nArrêt en cours..\n");
 
-    // Fermer les sockets pour débloquer les threads
     if (broadcast_sock >= 0)
     {
         close(broadcast_sock);
@@ -31,16 +30,12 @@ void signal_handler(int sig)
 void lock_all_mutexes()
 {
     pthread_mutex_lock(&neighbor_mutex);
-    printf("🔧 DEBUG: neighbor_mutex verrouillé\n");
     pthread_mutex_lock(&topology_mutex);
-    printf("🔧 DEBUG: topology_mutex verrouillé\n");
     pthread_mutex_lock(&routing_mutex);
-    printf("🔧 DEBUG: routing_mutex verrouillé\n");
 }
 
 void unlock_all_mutexes()
 {
-    printf("🔧 DEBUG: Fin calcul des chemins - déverrouillage\n");
     pthread_mutex_unlock(&routing_mutex);
     pthread_mutex_unlock(&topology_mutex);
     pthread_mutex_unlock(&neighbor_mutex);
@@ -207,7 +202,7 @@ int discover_interfaces()
             interfaces[interface_count].is_active = 1;
             interface_count++;
 
-            printf("🔍 Interface découverte: %s (%s) -> broadcast %s\n",
+            printf("Nouvelle interface: %s (%s) -> broadcast %s\n",
                    interface_name, ip, broadcast);
         }
     }
@@ -270,5 +265,12 @@ void ensure_local_routes()
             printf("🛣️  Ajout de la route locale : %s\n", add_cmd);
             system(add_cmd);
         }
+    }
+}
+
+void join_or_cancel(pthread_t tid, const char *name, struct timespec *timeout) {
+    if (pthread_timedjoin_np(tid, NULL, timeout) != 0) {
+        printf("Fin du thread %s\n", name);
+        pthread_cancel(tid);
     }
 }

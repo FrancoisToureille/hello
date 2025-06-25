@@ -81,16 +81,13 @@ void update_kernel_routing_table()
 {
     // Ne supprime que les routes dont le next-hop n'est pas 0.0.0.0 (pas les locales)
     system("ip route flush table 50");
-
     pthread_mutex_lock(&routing_mutex);
     for (int i = 0; i < route_count; i++)
     {
-        // destination est une IP
         char cmd[256];
-        // N'ajoute pas de route si next_hop == 0.0.0.0 (c'est une route locale)
-        if (strcmp(routing_table[i].next_hop, "0.0.0.0") == 0)
+        if (strcmp(routing_table[i].next_hop, "0.0.0.0") == 0) {
             continue;
-
+        }
         snprintf(cmd, sizeof(cmd),
          "ip route replace %s via %s dev %s",
          routing_table[i].destination,
@@ -99,13 +96,13 @@ void update_kernel_routing_table()
         printf("🛣️  Ajout route OSPF : %s\n", cmd);
         int ret = system(cmd);
         if (ret != 0) {
-            printf("⚠️  Erreur lors de l'ajout de la route: %s\n", cmd);
+            printf("Echec de l'ajout de la route: %s\n", cmd);
         }
     }
     pthread_mutex_unlock(&routing_mutex);
 }
 
-void cleanup_expired_neighbors()
+void supprimerVoisins()
 {
     pthread_mutex_lock(&neighbor_mutex);
     time_t now = time(NULL);

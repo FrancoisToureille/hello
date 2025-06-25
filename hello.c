@@ -47,18 +47,14 @@ void *thread_hello(void *arg)
                 }
                 else
                 {
-                    printf("  ❌ Erreur création socket Hello\n");
+                    printf("Echec de la socket Hello\n");
                 }
             }
         }
-
-        cleanup_expired_neighbors();
-
+        supprimerVoisins();
         initialize_own_lsa();
-
         sleep(HELLO_INTERVAL);
     }
-
     pthread_exit(NULL);
 }
 

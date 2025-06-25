@@ -172,7 +172,6 @@ void process_lsa_message(const char *message, const char *sender_ip)
     }
 }
 
-
 // Fonction pour créer notre propre LSA dans la base de données
 void initialize_own_lsa()
 {

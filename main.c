@@ -36,7 +36,6 @@ void update_kernel_routing_table(void);
 void process_hello_message(const char *message, const char *sender_ip);
 void process_lsa_message(const char *message, const char *sender_ip);
 void broadcast_lsa(const char *lsa_message);
-void show_topology(void);
 
 int main(int argc, char *argv[])
 {
@@ -50,10 +49,9 @@ int main(int argc, char *argv[])
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
     
-    printf("🖥️  Routeur: %s\n", hostname);
-    printf("🌐 Réseau broadcast: %s:%d\n", BROADCAST_IP, BROADCAST_PORT);
+    printf("Routeur: %s\n", hostname);
     printf("=====================================\n\n");
-    printf("🔍 Découverte des interfaces réseau...\n");
+    printf("Repérage des interfaces réseau locales...\n");
     if (discover_interfaces() <= 0)
     {
         return 1;
@@ -95,13 +93,8 @@ int main(int argc, char *argv[])
     // Initialiser notre propre LSA dans la base de données
     initialize_own_lsa();
 
-    printf("💬 Commandes:\n");
-    printf("  - 'neighbors' n");
-    printf("  - 'routes' \n");
-    printf("  - 'topology'\n");
-    printf("  - 'stop'\n");
+    printf("💬 Commandes: 'routes' - 'stop' - 'voisins' - \n");
 
-    // ÉTAPE 4: Boucle principale avec commandes
     while (running)
     {
         printf("💬 Commande: ");
@@ -114,17 +107,12 @@ int main(int argc, char *argv[])
 
         input[strcspn(input, "\n")] = 0;
 
-        if (strcmp(input, "stop") == 0)
-        {
+        if (strcmp(input, "voisins") == 0) {
+            voirVoisins();
+        } else if (strcmp(input, "stop") == 0) {
             system("ip route flush table 50");
             break;
-        }
-        else if (strcmp(input, "neighbors") == 0)
-        {
-            show_neighbors();
-        }
-        else if (strcmp(input, "routes") == 0)
-        {
+        } else if (strcmp(input, "routes") == 0) {
             printf("🔄 Calcul des routes...\n");
             struct timespec timeout;
             clock_gettime(CLOCK_REALTIME, &timeout);
@@ -139,31 +127,11 @@ int main(int argc, char *argv[])
             {
                 printf("no routes\n");
             }
-        }
-        else if (strcmp(input, "topology") == 0)
-        {
-            printf("🔄 Lecture de la topologie...\n");
-            struct timespec timeout;
-            clock_gettime(CLOCK_REALTIME, &timeout);
-            timeout.tv_sec += 3; // Timeout de 3 secondes
-
-            if (pthread_mutex_timedlock(&topology_mutex, &timeout) == 0)
-            {
-                show_topology();
-                pthread_mutex_unlock(&topology_mutex);
-            }
-            else
-            {
-                printf("❌ Timeout - impossible d'accéder à la topologie\n");
-            }
-        }
-        else if (strlen(input) > 0)
-        {
+        } else if (strlen(input) > 0) {
             send_message(input);
         }
     }
 
-    // ÉTAPE 5: Nettoyage et arrêt propre
     running = 0;
 
     // Fermer les sockets pour débloquer les threads
@@ -182,24 +150,11 @@ int main(int argc, char *argv[])
     timeout_spec.tv_sec = 2;
     timeout_spec.tv_nsec = 0;
 
-    printf(".........Closing services......\n");
+    printf("Fin\n");
 
-    if (pthread_timedjoin_np(listen_tid, NULL, &timeout_spec) != 0)
-    {
-        printf("Timeout - arrêt forcé du thread d'écoute\n");
-        pthread_cancel(listen_tid);
-    }
+    join_or_cancel(listen_tid, "d'écoute", &timeout_spec);
+    join_or_cancel(hello_tid, "Hello", &timeout_spec);
+    join_or_cancel(lsa_tid, "LSA", &timeout_spec);
 
-    if (pthread_timedjoin_np(hello_tid, NULL, &timeout_spec) != 0)
-    {
-        printf("Timeout - arrêt forcé du thread Hello\n");
-        pthread_cancel(hello_tid);
-    }
-
-    if (pthread_timedjoin_np(lsa_tid, NULL, &timeout_spec) != 0)
-    {
-        printf("Timeout - arrêt forcé du thread LSA\n");
-        pthread_cancel(lsa_tid);
-    }
     return 0;
 }
