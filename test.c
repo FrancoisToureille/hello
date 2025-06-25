@@ -16,6 +16,8 @@
 
 #define BROADCAST_PORT 8080
 #define BUFFER_SIZE 1024
+#define BROADCAST_IP "10.1.0.255"
+// Ajoutez ces définitions après les #define existants
 #define MAX_NEIGHBORS 10
 #define MAX_INTERFACES 5
 #define HELLO_INTERVAL 10
@@ -98,7 +100,7 @@ int node_count = 0;
 
 volatile int running = 1;
 int broadcast_sock;
-int listen_sock;
+int listen_sock; // Socket d'écoute global pour pouvoir le fermer
 
 // Function declarations
 void update_kernel_routing_table(void);
@@ -112,6 +114,7 @@ void signal_handler(int sig)
     running = 0;
     printf("\nArrêt du programme...\n");
 
+    // Fermer les sockets pour débloquer les threads
     if (broadcast_sock >= 0)
     {
         close(broadcast_sock);
@@ -161,7 +164,6 @@ int create_broadcast_socket()
 
     return sock;
 }
-
 void *listen_thread(void *arg)
 {
     struct sockaddr_in server_addr, client_addr;
@@ -230,16 +232,20 @@ void *listen_thread(void *arg)
             {
                 buffer[bytes_received] = '\0';
 
+                // Déterminer le type de message
                 if (strncmp(buffer, "HELLO|", 6) == 0)
                 {
+                    // Traiter message Hello
                     process_hello_message(buffer, inet_ntoa(client_addr.sin_addr));
                 }
                 else if (strncmp(buffer, "LSA|", 4) == 0)
                 {
+                    // Traiter message LSA
                     process_lsa_message(buffer, inet_ntoa(client_addr.sin_addr));
                 }
                 else
                 {
+                    // Message utilisateur normal
                     if (strstr(buffer, hostname) != buffer + 1)
                     {
                         time_t now = time(NULL);
@@ -263,125 +269,103 @@ void *listen_thread(void *arg)
 
 int send_message(const char *message)
 {
-    if (!running)
-        return -1;
-
+    struct sockaddr_in broadcast_addr;
     char hostname[256];
-    if (gethostname(hostname, sizeof(hostname)) != 0)
-        strcpy(hostname, "Unknown");
-
     char full_message[BUFFER_SIZE];
-    snprintf(full_message, sizeof(full_message), "[%s] %s", hostname, message);
 
-    for (int i = 0; i < interface_count; i++) {
-        if (!interfaces[i].is_active) continue;
+    if (!running)
+        return -1; // Ne pas envoyer si arrêt en cours
 
-        struct sockaddr_in broadcast_addr;
-        memset(&broadcast_addr, 0, sizeof(broadcast_addr));
-        broadcast_addr.sin_family = AF_INET;
-        broadcast_addr.sin_port = htons(BROADCAST_PORT);
-        broadcast_addr.sin_addr.s_addr = inet_addr(interfaces[i].broadcast_ip);
-
-        int sock = create_broadcast_socket();
-        if (sock < 0) continue;
-
-        if (sendto(sock, full_message, strlen(full_message), 0,
-                   (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr)) < 0)
-        {
-            if (running) perror("Erreur sendto dans send_message()");
-        } else {
-            printf("✅ Message envoyé sur %s : %s\n", interfaces[i].broadcast_ip, message);
-        }
-
-        close(sock);
+    if (gethostname(hostname, sizeof(hostname)) != 0)
+    {
+        strcpy(hostname, "Unknown");
     }
 
+    snprintf(full_message, sizeof(full_message), "[%s] %s", hostname, message);
+
+    memset(&broadcast_addr, 0, sizeof(broadcast_addr));
+    broadcast_addr.sin_family = AF_INET;
+    broadcast_addr.sin_port = htons(BROADCAST_PORT);
+    broadcast_addr.sin_addr.s_addr = inet_addr(BROADCAST_IP);
+
+    if (sendto(broadcast_sock, full_message, strlen(full_message), 0,
+               (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr)) < 0)
+    {
+        if (running)
+        { // Ne pas afficher l'erreur si arrêt en cours
+            perror("Erreur sendto");
+        }
+        return -1;
+    }
+
+    printf("✅ Message envoyé: %s\n", message);
     return 0;
 }
-
-// CORRECTION 1: Amélioration de la découverte d'interfaces
+// Function to discover network interfaces
 int discover_interfaces()
 {
     FILE *fp;
     char line[256];
+    char interface_name[16] = {0}, ip[16] = {0}, broadcast[16] = {0};
     interface_count = 0;
 
-    // Utiliser une méthode plus robuste pour découvrir les interfaces
-    fp = popen("ip -4 addr show | grep -E '^[0-9]+:|inet ' | grep -v '127.0.0.1'", "r");
+    fp = popen("ip -o -4 addr show | awk '{print $2,$4}'", "r");
     if (fp == NULL) {
-        perror("Erreur popen ip addr");
+        perror("Erreur popen ip a");
         return -1;
     }
 
-    char current_interface[16] = {0};
     while (fgets(line, sizeof(line), fp) != NULL && interface_count < MAX_INTERFACES) {
-        // Ligne d'interface: "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> ..."
-        if (line[0] >= '0' && line[0] <= '9') {
-            char *colon1 = strchr(line, ':');
-            char *colon2 = colon1 ? strchr(colon1 + 1, ':') : NULL;
-            if (colon1 && colon2) {
-                size_t len = colon2 - colon1 - 1;
-                if (len < sizeof(current_interface)) {
-                    strncpy(current_interface, colon1 + 2, len); // +2 pour ignorer ": "
-                    current_interface[len] = '\0';
-                    
-                    // Enlever les espaces en fin
-                    char *end = current_interface + strlen(current_interface) - 1;
-                    while (end > current_interface && *end == ' ') {
-                        *end = '\0';
-                        end--;
-                    }
-                }
+        // Format attendu : eth0 192.168.1.1/24
+        if (sscanf(line, "%15s %15s", interface_name, ip) == 2) {
+            // Retirer le /xx du préfixe
+            char *slash = strchr(ip, '/');
+            if (slash) *slash = '\0';
+
+            // Calculer l'adresse de broadcast (optionnel, à adapter si besoin)
+            char *dot1 = strchr(ip, '.');
+            char *dot2 = dot1 ? strchr(dot1 + 1, '.') : NULL;
+            char *dot3 = dot2 ? strchr(dot2 + 1, '.') : NULL;
+            if (dot1 && dot2 && dot3) {
+                int a = atoi(ip);
+                int b = atoi(dot1 + 1);
+                int c = atoi(dot2 + 1);
+                snprintf(broadcast, sizeof(broadcast), "%d.%d.%d.255", a, b, c);
+            } else {
+                strcpy(broadcast, "255.255.255.255");
             }
-        }
-        // Ligne IP: "    inet 192.168.1.1/24 brd 192.168.1.255 ..."
-        else if (strstr(line, "inet ") && current_interface[0]) {
-            char ip_with_mask[32];
-            if (sscanf(line, "%*s inet %31s", ip_with_mask) == 1) {
-                char *slash = strchr(ip_with_mask, '/');
-                if (slash) *slash = '\0';
-                
-                // Calculer l'adresse de broadcast
-                char broadcast[16];
-                unsigned long ip_addr = inet_addr(ip_with_mask);
-                unsigned long network = ip_addr & 0x00FFFFFF; // Masque /24
-                unsigned long bcast = network | 0xFF000000;
-                struct in_addr bcast_addr;
-                bcast_addr.s_addr = bcast;
-                strcpy(broadcast, inet_ntoa(bcast_addr));
-                
-                strcpy(interfaces[interface_count].name, current_interface);
-                strcpy(interfaces[interface_count].ip_address, ip_with_mask);
-                strcpy(interfaces[interface_count].broadcast_ip, broadcast);
-                interfaces[interface_count].is_active = 1;
-                interface_count++;
-                
-                printf("🔍 Interface découverte: %s (%s) -> broadcast %s\n",
-                       current_interface, ip_with_mask, broadcast);
-                
-                current_interface[0] = '\0'; // Reset pour la prochaine interface
-            }
+
+            strcpy(interfaces[interface_count].name, interface_name);
+            strcpy(interfaces[interface_count].ip_address, ip);
+            strcpy(interfaces[interface_count].broadcast_ip, broadcast);
+            interfaces[interface_count].is_active = 1;
+            interface_count++;
+
+            printf("🔍 Interface découverte: %s (%s) -> broadcast %s\n",
+                   interface_name, ip, broadcast);
         }
     }
     pclose(fp);
 
     return interface_count;
 }
-
 void ensure_local_routes()
 {
     for (int i = 0; i < interface_count; i++) {
+        // Construire le préfixe réseau (ex : 192.168.1.0/24)
         char prefix[32];
         strcpy(prefix, interfaces[i].ip_address);
         char *last_dot = strrchr(prefix, '.');
         if (last_dot) strcpy(last_dot + 1, "0/24");
 
+        // Vérifier si la route existe déjà
         char check_cmd[128];
         snprintf(check_cmd, sizeof(check_cmd),
             "ip route show | grep -q '^%s '", prefix);
         int exists = system(check_cmd);
 
         if (exists != 0) {
+            // Ajouter la route
             char add_cmd[256];
             snprintf(add_cmd, sizeof(add_cmd),
                 "ip route add %s dev %s", prefix, interfaces[i].name);
@@ -391,92 +375,101 @@ void ensure_local_routes()
     }
 }
 
-// CORRECTION 2: Amélioration du traitement des messages Hello
+// Function to process hello messages
 void process_hello_message(const char *message, const char *sender_ip)
 {
-    printf("🔍 Message HELLO reçu: %s (de %s)\n", message, sender_ip);
+    printf("🔍 Message reçu: %s (de %s)\n", message, sender_ip);
 
-    if (strncmp(message, "HELLO|", 6) != 0) return;
+    if (strncmp(message, "HELLO|", 6) == 0)
+    {
+        char *msg_ptr = (char *)message + 6; // Skip "HELLO|"
+        char *router_id_end = strchr(msg_ptr, '|');
 
-    char msg_copy[BUFFER_SIZE];
-    strncpy(msg_copy, message, sizeof(msg_copy));
-    msg_copy[sizeof(msg_copy) - 1] = '\0';
+        if (router_id_end)
+        {
+            // Extract router_id
+            size_t router_id_len = router_id_end - msg_ptr;
+            char router_id[32];
+            if (router_id_len < sizeof(router_id))
+            {
+                strncpy(router_id, msg_ptr, router_id_len);
+                router_id[router_id_len] = '\0';
 
-    char *saveptr;
-    char *token = strtok_r(msg_copy, "|", &saveptr); // "HELLO"
-    char *router_id = strtok_r(NULL, "|", &saveptr);
-    char *router_ip = strtok_r(NULL, "|", &saveptr);
-    char *timestamp_str = strtok_r(NULL, "|", &saveptr);
+                // Vérifier si le HELLO vient de nous-même
+                char hostname[256];
+                if (gethostname(hostname, sizeof(hostname)) != 0)
+                {
+                    strcpy(hostname, "Unknown");
+                }
+                if (strcmp(router_id, hostname) == 0)
+                {
+                    // On ignore notre propre HELLO
+                    return;
+                }
 
-    if (!router_id || !router_ip) {
-        printf("❌ Message HELLO malformé\n");
-        return;
-    }
+                // Extract IP address
+                char *ip_start = router_id_end + 1;
+                char *ip_end = strchr(ip_start, '|');
 
-    // Vérifier si le HELLO vient de nous-même
-    char hostname[256];
-    if (gethostname(hostname, sizeof(hostname)) != 0) {
-        strcpy(hostname, "Unknown");
-    }
-    if (strcmp(router_id, hostname) == 0) {
-        return; // Ignorer notre propre HELLO
-    }
+                if (ip_end)
+                {
+                    size_t ip_len = ip_end - ip_start;
+                    char router_ip[16];
+                    if (ip_len < sizeof(router_ip))
+                    {
+                        strncpy(router_ip, ip_start, ip_len);
+                        router_ip[ip_len] = '\0';
 
-    pthread_mutex_lock(&neighbor_mutex);
+                        pthread_mutex_lock(&neighbor_mutex);
 
-    // Chercher le voisin existant
-    int found = -1;
-    for (int i = 0; i < neighbor_count; i++) {
-        if (strcmp(neighbors[i].router_id, router_id) == 0) {
-            found = i;
-            break;
-        }
-    }
+                        // Check if neighbor already exists
+                        int found = -1;
+                        for (int i = 0; i < neighbor_count; i++)
+                        {
+                            if (strcmp(neighbors[i].router_id, router_id) == 0)
+                            {
+                                found = i;
+                                break;
+                            }
+                        }
 
-    if (found >= 0) {
-        // Mettre à jour voisin existant
-        neighbors[found].last_hello = time(NULL);
-        neighbors[found].link_state = 1;
-        strcpy(neighbors[found].ip_address, router_ip); // Mettre à jour l'IP
-        printf("🔄 Mise à jour voisin: %s (%s)\n", router_id, router_ip);
-    } else if (neighbor_count < MAX_NEIGHBORS) {
-        // Ajouter nouveau voisin
-        strcpy(neighbors[neighbor_count].router_id, router_id);
-        strcpy(neighbors[neighbor_count].ip_address, router_ip);
-        neighbors[neighbor_count].metric = 1;
-        neighbors[neighbor_count].last_hello = time(NULL);
-        neighbors[neighbor_count].bandwidth_mbps = 100;
-        neighbors[neighbor_count].link_state = 1;
+                        if (found >= 0)
+                        {
+                            neighbors[found].last_hello = time(NULL);
+                            neighbors[found].link_state = 1;
+                            printf("🔄 Mise à jour voisin: %s\n", router_id);
+                        }
+                        else if (neighbor_count < MAX_NEIGHBORS)
+                        {
+                            strcpy(neighbors[neighbor_count].router_id, router_id);
+                            strcpy(neighbors[neighbor_count].ip_address, router_ip);
+                            neighbors[neighbor_count].metric = 1;
+                            neighbors[neighbor_count].last_hello = time(NULL);
+                            neighbors[neighbor_count].bandwidth_mbps = 100;
+                            neighbors[neighbor_count].link_state = 1;
 
-        // CORRECTION 3: Améliorer la détection d'interface
-        for (int j = 0; j < interface_count; j++) {
-            // Extraire le réseau de l'interface locale
-            char local_network[16];
-            strcpy(local_network, interfaces[j].ip_address);
-            char *dot = strrchr(local_network, '.');
-            if (dot) strcpy(dot, ".0");
-            
-            // Extraire le réseau de l'IP du voisin
-            char neighbor_network[16];
-            strcpy(neighbor_network, router_ip);
-            dot = strrchr(neighbor_network, '.');
-            if (dot) strcpy(dot, ".0");
-            
-            // Si même réseau, utiliser cette interface
-            if (strcmp(local_network, neighbor_network) == 0) {
-                strcpy(neighbors[neighbor_count].interface, interfaces[j].name);
-                break;
+                            for (int j = 0; j < interface_count; j++)
+                            {
+                                if (strncmp(router_ip, interfaces[j].ip_address, strlen(interfaces[j].ip_address) - 2) == 0)
+                                {
+                                    strcpy(neighbors[neighbor_count].interface, interfaces[j].name);
+                                    break;
+                                }
+                            }
+
+                            printf("🤝 Nouveau voisin découvert: %s (%s)\n", router_id, router_ip);
+                            neighbor_count++;
+                        }
+
+                        pthread_mutex_unlock(&neighbor_mutex);
+                    }
+                }
             }
         }
-
-        printf("🤝 Nouveau voisin découvert: %s (%s) sur interface %s\n", 
-               router_id, router_ip, neighbors[neighbor_count].interface);
-        neighbor_count++;
     }
-
-    pthread_mutex_unlock(&neighbor_mutex);
 }
 
+// Fonction pour nettoyer les voisins expirés
 void cleanup_expired_neighbors()
 {
     pthread_mutex_lock(&neighbor_mutex);
@@ -494,11 +487,11 @@ void cleanup_expired_neighbors()
     pthread_mutex_unlock(&neighbor_mutex);
 }
 
-// CORRECTION 4: Amélioration de la création des LSA
+// Thread pour échanger les LSA
 void *lsa_thread(void *arg)
 {
     char hostname[256];
-    char lsa_message[BUFFER_SIZE * 2]; // Buffer plus grand pour les LSA
+    char lsa_message[BUFFER_SIZE];
 
     if (gethostname(hostname, sizeof(hostname)) != 0)
     {
@@ -507,21 +500,13 @@ void *lsa_thread(void *arg)
 
     while (running)
     {
+        // Créer et envoyer notre LSA
         pthread_mutex_lock(&neighbor_mutex);
 
-        // Créer LSA avec nos interfaces ET nos voisins
         snprintf(lsa_message, sizeof(lsa_message), "LSA|%s|%d|%d",
-                 hostname, (int)time(NULL), neighbor_count + interface_count);
+                 hostname, (int)time(NULL), neighbor_count);
 
-        // Ajouter nos propres interfaces comme "liens"
-        for (int i = 0; i < interface_count; i++) {
-            char interface_info[128];
-            snprintf(interface_info, sizeof(interface_info), "|%s,%s,0,1000",
-                     hostname, interfaces[i].ip_address);
-            strcat(lsa_message, interface_info);
-        }
-
-        // Ajouter les voisins actifs
+        // Ajouter les informations de chaque voisin
         for (int i = 0; i < neighbor_count; i++)
         {
             if (neighbors[i].link_state == 1)
@@ -536,29 +521,35 @@ void *lsa_thread(void *arg)
 
         pthread_mutex_unlock(&neighbor_mutex);
 
-        printf("📡 Envoi LSA: %s\n", lsa_message);
+        // Envoyer LSA sur toutes les interfaces
         broadcast_lsa(lsa_message);
 
-        sleep(30);
+        sleep(30); // Envoyer LSA toutes les 30 secondes
     }
 
     pthread_exit(NULL);
 }
 
+// Initialisation des mutex
 void lock_all_mutexes()
 {
     pthread_mutex_lock(&neighbor_mutex);
+    printf("🔧 DEBUG: neighbor_mutex verrouillé\n");
     pthread_mutex_lock(&topology_mutex);
+    printf("🔧 DEBUG: topology_mutex verrouillé\n");
     pthread_mutex_lock(&routing_mutex);
+    printf("🔧 DEBUG: routing_mutex verrouillé\n");
 }
 
 void unlock_all_mutexes()
 {
+    printf("🔧 DEBUG: Fin calcul des chemins - déverrouillage\n");
     pthread_mutex_unlock(&routing_mutex);
     pthread_mutex_unlock(&topology_mutex);
     pthread_mutex_unlock(&neighbor_mutex);
 }
 
+// Initialiser les nœuds avec la topologie et les voisins
 int initialize_nodes(dijkstra_node_t *nodes)
 {
     int node_count = 0;
@@ -634,7 +625,7 @@ void initialize_direct_neighbors(dijkstra_node_t *nodes, int node_count)
             {
                 if (strcmp(nodes[j].router_id, neighbors[i].router_id) == 0)
                 {
-                    int metric = neighbors[i].metric;
+                    int metric = neighbors[i].metric + (1000 / neighbors[i].bandwidth_mbps);
                     nodes[j].distance = metric;
                     strcpy(nodes[j].next_hop, neighbors[i].ip_address);
                     strcpy(nodes[j].interface, neighbors[i].interface);
@@ -694,7 +685,7 @@ void run_dijkstra(dijkstra_node_t *nodes, int node_count)
 
             if (neighbor_index >= 0 && !nodes[neighbor_index].visited)
             {
-                int link_cost = current_lsa->links[i].metric + 1;
+                int link_cost = current_lsa->links[i].metric + (1000 / current_lsa->links[i].bandwidth_mbps);
                 int new_distance = nodes[min_index].distance + link_cost;
 
                 if (new_distance < nodes[neighbor_index].distance)
@@ -863,7 +854,7 @@ void initialize_own_lsa()
         topology_db[our_lsa_index].timestamp = time(NULL);
         topology_db[our_lsa_index].num_links = 0;
 
-        // Ajouter nos voisins directs
+                // Ajouter nos voisins directs
         pthread_mutex_lock(&neighbor_mutex);
         for (int i = 0; i < neighbor_count && topology_db[our_lsa_index].num_links < MAX_NEIGHBORS; i++)
         {
@@ -875,6 +866,22 @@ void initialize_own_lsa()
             }
         }
         pthread_mutex_unlock(&neighbor_mutex);
+
+        // ✅ Ajouter nos propres interfaces comme liens locaux
+        for (int i = 0; i < interface_count && topology_db[our_lsa_index].num_links < MAX_NEIGHBORS; i++)
+        {
+            neighbor_t local_link;
+            memset(&local_link, 0, sizeof(local_link));
+            strncpy(local_link.router_id, hostname, sizeof(local_link.router_id) - 1);
+            strncpy(local_link.ip_address, interfaces[i].ip_address, sizeof(local_link.ip_address) - 1);
+            strncpy(local_link.interface, interfaces[i].name, sizeof(local_link.interface) - 1);
+            local_link.metric = 0;
+            local_link.bandwidth_mbps = 1000;
+            local_link.link_state = 1;
+
+            topology_db[our_lsa_index].links[topology_db[our_lsa_index].num_links++] = local_link;
+        }
+
     }
 
     pthread_mutex_unlock(&topology_mutex);
@@ -1232,9 +1239,7 @@ int main(int argc, char *argv[])
 
     printf("=== Routeur Communication System ===\n");
     printf("🖥️  Routeur: %s\n", hostname);
-    for (int i = 0; i < interface_count; i++) {
-    printf("🌐 Interface %s -> broadcast %s:%d\n", interfaces[i].name, interfaces[i].broadcast_ip, BROADCAST_PORT);
-    }    
+    printf("🌐 Réseau broadcast: %s:%d\n", BROADCAST_IP, BROADCAST_PORT);
     printf("=====================================\n\n");
 
     // ÉTAPE 1: Découvrir les interfaces réseau EN PREMIER
