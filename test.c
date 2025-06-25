@@ -712,34 +712,17 @@ void run_dijkstra(dijkstra_node_t *nodes, int node_count)
 
 void build_routing_table(dijkstra_node_t *nodes, int node_count, int source_index) {
     route_count = 0;
-    // Pour chaque routeur distant (hors soi-même)
+
     for (int i = 0; i < node_count; i++) {
         if (i == source_index) continue;
 
-        // Trouver le LSA correspondant dans la LSDB
         for (int j = 0; j < topology_db_size; j++) {
             if (strcmp(topology_db[j].router_id, nodes[i].router_id) != 0) continue;
 
-            // Pour chaque interface de ce routeur distant
             for (int k = 0; k < topology_db[j].num_links; k++) {
                 const char *dest_ip = topology_db[j].links[k].ip_address;
 
-                // Vérifie que ce n'est pas une de nos propres interfaces
-                int is_own_network = 0;
-                for (int m = 0; m < interface_count; m++) {
-                    char local_prefix[32];
-                    strcpy(local_prefix, interfaces[m].ip_address);
-                    char *last_dot = strrchr(local_prefix, '.');
-                    if (last_dot) strcpy(last_dot + 1, "0/24");
-                    if (strcmp(prefix, local_prefix) == 0) {
-                        is_own_network = 1;
-                        break;
-                    }
-                }
-                if (is_own_network)
-                    continue;
-
-                // Calcule le préfixe réseau (ex: 10.1.0.0/24)
+                // Calcule le préfixe réseau (ex: 192.168.1.0/24)
                 char prefix[32];
                 strcpy(prefix, dest_ip);
                 char *last_dot = strrchr(prefix, '.');
@@ -753,23 +736,76 @@ void build_routing_table(dijkstra_node_t *nodes, int node_count, int source_inde
                         break;
                     }
                 }
-                if (already)
-                    continue;
+                if (already) continue;
 
                 // Vérifie que ce n'est pas un de nos propres réseaux locaux
                 int is_own_network = 0;
                 for (int m = 0; m < interface_count; m++) {
                     char local_prefix[32];
                     strcpy(local_prefix, interfaces[m].ip_address);
-                    char *last_dot = strrchr(local_prefix, '.');
-                    if (last_dot) strcpy(last_dot + 1, "0/24");
+                    char *ldot = strrchr(local_prefix, '.');
+                    if (ldot) strcpy(ldot + 1, "0/24");
                     if (strcmp(prefix, local_prefix) == 0) {
                         is_own_network = 1;
                         break;
                     }
                 }
-                if (is_own_network)
-                    continue;
+                if (is_own_network) continue;
+
+                // Ajoute la route
+                if (route_count < MAX_ROUTES) {
+                    strcpy(routing_table[route_count].destination, prefix);
+                    strcpy(routing_table[route_count].next_hop, nodes[i].next_hop);
+                    strcpy(routing_table[route_count].interface, nodes[i].interface);
+                    routing_table[route_count].metric = nodes[i].distance + topology_db[j].links[k].metric;
+                    routing_table[route_count].hop_count = (routing_table[route_count].metric + 999) / 1000;
+                    routing_table[route_count].bandwidth = topology_db[j].links[k].bandwidth_mbps;
+                    route_count++;
+                }
+            }
+        }
+    }
+void build_routing_table(dijkstra_node_t *nodes, int node_count, int source_index) {
+    route_count = 0;
+
+    for (int i = 0; i < node_count; i++) {
+        if (i == source_index) continue;
+
+        for (int j = 0; j < topology_db_size; j++) {
+            if (strcmp(topology_db[j].router_id, nodes[i].router_id) != 0) continue;
+
+            for (int k = 0; k < topology_db[j].num_links; k++) {
+                const char *dest_ip = topology_db[j].links[k].ip_address;
+
+                // Calcule le préfixe réseau (ex: 192.168.1.0/24)
+                char prefix[32];
+                strcpy(prefix, dest_ip);
+                char *last_dot = strrchr(prefix, '.');
+                if (last_dot) strcpy(last_dot + 1, "0/24");
+
+                // Vérifie qu'on n'a pas déjà ajouté cette destination (évite les doublons)
+                int already = 0;
+                for (int r = 0; r < route_count; r++) {
+                    if (strcmp(routing_table[r].destination, prefix) == 0) {
+                        already = 1;
+                        break;
+                    }
+                }
+                if (already) continue;
+
+                // Vérifie que ce n'est pas un de nos propres réseaux locaux
+                int is_own_network = 0;
+                for (int m = 0; m < interface_count; m++) {
+                    char local_prefix[32];
+                    strcpy(local_prefix, interfaces[m].ip_address);
+                    char *ldot = strrchr(local_prefix, '.');
+                    if (ldot) strcpy(ldot + 1, "0/24");
+                    if (strcmp(prefix, local_prefix) == 0) {
+                        is_own_network = 1;
+                        break;
+                    }
+                }
+                if (is_own_network) continue;
 
                 // Ajoute la route
                 if (route_count < MAX_ROUTES) {
