@@ -10,12 +10,14 @@
 #include <string.h>     // strcpy, strcmp, strcspn, strlen
 #include <unistd.h>     // close, sleep, gethostname
 #include <signal.h>     // signal, SIGINT, SIGTERM
+#include <pthread.h>
+#include <time.h>
 
-// Variables globales
+// Variables globales (déclarées extern dans types.h)
 voisin_t voisins[NB_MAX_VOISINS];
-interface_reseau_t interfaces_reseau[NB_MAX_INTERFACES];
+interface_reseau_t interfaces[NB_MAX_INTERFACES];
 route_t table_routage[NB_MAX_ROUTES];
-lsa_t base_topologie[NB_MAX_VOISINS];
+lsa_t base_topologie[NB_MAX_TOPOLOGIE];
 dijkstra_node_t noeuds_dijkstra[NB_MAX_VOISINS];
 
 int nombre_voisins = 0;
@@ -23,11 +25,11 @@ int nombre_interfaces = 0;
 int nombre_routes = 0;
 int taille_topologie = 0;
 int nombre_noeuds = 0;
-int socket_broadcast = -1;
+int socket_diffusion = -1;
 int socket_ecoute = -1;
 volatile int en_fonctionnement = 1;
 
-// Mutex
+// Mutex globaux (déclarés extern dans types.h)
 pthread_mutex_t mutex_voisins = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_routage = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_topologie = PTHREAD_MUTEX_INITIALIZER;
@@ -38,14 +40,25 @@ void gerer_message_hello(const char *message, const char *ip_expediteur);
 void gerer_message_lsa(const char *message, const char *ip_expediteur);
 void diffuser_lsa(const char *message_lsa);
 void gestion_signal(int signal);
+void join_or_cancel(pthread_t thread, const char *nom_thread, const struct timespec *timeout);
+int discover_interfaces(void);
+void ensure_local_routes(void);
+int create_broadcast_socket(void);
+void *listen_thread(void *arg);
+void *thread_hello(void *arg);
+void *lsa_thread(void *arg);
+void initialize_own_lsa(void);
+void voirVoisins(void);
+void show_routing_table(void);
+void send_message(const char *msg);
 
 int main(int argc, char *argv[])
 {
-    pthread_t thread_ecoute, thread_hello, thread_lsa;
+    pthread_t thread_ecoute, thread_hello_id, thread_lsa_id;
     char entree[TAILLE_BUFFER];
     char nom_hote[256];
 
-    socket_broadcast = -1;
+    socket_diffusion = -1;
     socket_ecoute = -1;
 
     signal(SIGINT, gestion_signal);
@@ -67,9 +80,9 @@ int main(int argc, char *argv[])
 
     ensure_local_routes();
 
-    // Étape 2 : Création du socket broadcast
-    socket_broadcast = create_broadcast_socket();
-    if (socket_broadcast < 0)
+    // Création du socket broadcast
+    socket_diffusion = create_broadcast_socket();
+    if (socket_diffusion < 0)
     {
         fprintf(stderr, "Échec création socket broadcast.\n");
         return 1;
@@ -78,21 +91,21 @@ int main(int argc, char *argv[])
     if (pthread_create(&thread_ecoute, NULL, listen_thread, NULL) != 0)
     {
         perror("Erreur création thread d'écoute");
-        close(socket_broadcast);
+        close(socket_diffusion);
         return 1;
     }
 
-    if (pthread_create(&thread_hello, NULL, thread_hello, NULL) != 0)
+    if (pthread_create(&thread_hello_id, NULL, thread_hello, NULL) != 0)
     {
         perror("Erreur création thread Hello");
-        close(socket_broadcast);
+        close(socket_diffusion);
         return 1;
     }
 
-    if (pthread_create(&thread_lsa, NULL, lsa_thread, NULL) != 0)
+    if (pthread_create(&thread_lsa_id, NULL, lsa_thread, NULL) != 0)
     {
         perror("Erreur création thread LSA");
-        close(socket_broadcast);
+        close(socket_diffusion);
         return 1;
     }
 
@@ -144,10 +157,10 @@ int main(int argc, char *argv[])
     en_fonctionnement = 0;
 
     // Fermeture des sockets pour débloquer les threads
-    if (socket_broadcast >= 0)
+    if (socket_diffusion >= 0)
     {
-        close(socket_broadcast);
-        socket_broadcast = -1;
+        close(socket_diffusion);
+        socket_diffusion = -1;
     }
     if (socket_ecoute >= 0)
     {
@@ -162,8 +175,8 @@ int main(int argc, char *argv[])
     printf("🛑 Arrêt du routeur.\n");
 
     join_or_cancel(thread_ecoute, "d'écoute", &timeout_thread);
-    join_or_cancel(thread_hello, "Hello", &timeout_thread);
-    join_or_cancel(thread_lsa, "LSA", &timeout_thread);
+    join_or_cancel(thread_hello_id, "Hello", &timeout_thread);
+    join_or_cancel(thread_lsa_id, "LSA", &timeout_thread);
 
     return 0;
 }
