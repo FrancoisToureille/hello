@@ -299,72 +299,59 @@ int send_message(const char *message)
     return 0;
 }
 
-// CORRECTION 1: Amélioration de la découverte d'interfaces
 int discover_interfaces()
 {
     FILE *fp;
     char line[256];
     interface_count = 0;
 
-    // Utiliser une méthode plus robuste pour découvrir les interfaces
     fp = popen("ip -4 addr show | grep -E '^[0-9]+:|inet ' | grep -v '127.0.0.1'", "r");
     if (fp == NULL) {
         perror("Erreur popen ip addr");
         return -1;
     }
 
-    char current_interface[16] = {0};
-    while (fgets(line, sizeof(line), fp) != NULL && interface_count < MAX_INTERFACES) {
-        // Ligne d'interface: "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> ..."
+    char current_interface[32] = {0};
+    while (fgets(line, sizeof(line), fp)) {
+        // Ligne d'interface: "2: eth0: <...>"
         if (line[0] >= '0' && line[0] <= '9') {
-            char *colon1 = strchr(line, ':');
-            char *colon2 = colon1 ? strchr(colon1 + 1, ':') : NULL;
-            if (colon1 && colon2) {
-                size_t len = colon2 - colon1 - 1;
-                if (len < sizeof(current_interface)) {
-                    strncpy(current_interface, colon1 + 2, len); // +2 pour ignorer ": "
-                    current_interface[len] = '\0';
-                    
-                    // Enlever les espaces en fin
-                    char *end = current_interface + strlen(current_interface) - 1;
-                    while (end > current_interface && *end == ' ') {
-                        *end = '\0';
-                        end--;
-                    }
-                }
-            }
+            sscanf(line, "%*d: %31[^:]:", current_interface);
         }
         // Ligne IP: "    inet 192.168.1.1/24 brd 192.168.1.255 ..."
         else if (strstr(line, "inet ") && current_interface[0]) {
+            if (interface_count >= MAX_INTERFACES)
+                break;
+
             char ip_with_mask[32];
-            if (sscanf(line, "%*s inet %31s", ip_with_mask) == 1) {
+            if (sscanf(line, " inet %31s", ip_with_mask) == 1) {
                 char *slash = strchr(ip_with_mask, '/');
                 if (slash) *slash = '\0';
-                
-                // Calculer l'adresse de broadcast
-                char broadcast[16];
-                unsigned long ip_addr = inet_addr(ip_with_mask);
-                unsigned long network = ip_addr & 0x00FFFFFF; // Masque /24
-                unsigned long bcast = network | 0xFF000000;
-                struct in_addr bcast_addr;
-                bcast_addr.s_addr = bcast;
-                strcpy(broadcast, inet_ntoa(bcast_addr));
-                
+
+                // Calcul broadcast avec masque /24
+                struct in_addr ip, bcast;
+                char broadcast[16] = {0};
+                if (inet_aton(ip_with_mask, &ip)) {
+                    bcast.s_addr = (ip.s_addr & htonl(0xFFFFFF00)) | htonl(0x000000FF);
+                    strcpy(broadcast, inet_ntoa(bcast));
+                } else {
+                    continue; // IP invalide
+                }
+
                 strcpy(interfaces[interface_count].name, current_interface);
                 strcpy(interfaces[interface_count].ip_address, ip_with_mask);
                 strcpy(interfaces[interface_count].broadcast_ip, broadcast);
                 interfaces[interface_count].is_active = 1;
                 interface_count++;
-                
+
                 printf("🔍 Interface découverte: %s (%s) -> broadcast %s\n",
                        current_interface, ip_with_mask, broadcast);
-                
-                current_interface[0] = '\0'; // Reset pour la prochaine interface
+
+                current_interface[0] = '\0'; // Reset
             }
         }
     }
-    pclose(fp);
 
+    pclose(fp);
     return interface_count;
 }
 
