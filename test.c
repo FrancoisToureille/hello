@@ -1109,7 +1109,7 @@ void update_kernel_routing_table()
             continue;
 
         snprintf(cmd, sizeof(cmd),
-                 "ip route replace %s via %s dev %s table 100",
+                 "ip route replace %s via %s dev %s",
                  routing_table[i].destination,
                  routing_table[i].next_hop,
                  routing_table[i].interface);
