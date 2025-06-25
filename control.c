@@ -1,62 +1,39 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <pthread.h>
+#include <errno.h>
+#include <signal.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <sys/select.h>
+
 #include "types.h"
 #include "control.h"
-#include <pthread.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <arpa/inet.h>
-#include <errno.h>
-#include <time.h>
-#include <sys/select.h>
+#include "hello.h"
+#include "lsa.h"
 
 #define BROADCAST_IP "255.255.255.255"  // Définition manquante dans types.h
 #define BUFFER_SIZE TAILLE_BUFFER        // Pour cohérence avec types.h
 #define BROADCAST_PORT PORT_DIFFUSION    // Pour cohérence avec types.h
 #define MAX_INTERFACES NB_MAX_INTERFACES // Pour cohérence
 
-// Variables globales externes à définir dans un autre fichier .c
-extern volatile int en_fonctionnement;
-extern int socket_diffusion;
-extern int socket_ecoute;
-
-extern interface_reseau_t interfaces[NB_MAX_INTERFACES];
-extern int nombre_interfaces;
-
-extern pthread_mutex_t mutex_voisins;
-extern pthread_mutex_t mutex_topologie;
-extern pthread_mutex_t mutex_routage;
-
-extern pthread_mutex_t mutex_voisins;
-
-void gestion_signal(int sig)
+void signal_handler(int sig)
 {
-    en_fonctionnement = 0;
-    printf("\nArrêt en cours..\n");
+    running = 0;
+    printf("\nArrêt du programme...\n");
 
-    if (socket_diffusion >= 0)
+    // Fermer les sockets pour débloquer les threads
+    if (broadcast_sock >= 0)
     {
-        close(socket_diffusion);
+        close(broadcast_sock);
     }
-    if (socket_ecoute >= 0)
+    if (listen_sock >= 0)
     {
-        close(socket_ecoute);
+        close(listen_sock);
     }
-}
-
-// Initialisation des mutex
-void lock_all_mutexes()
-{
-    pthread_mutex_lock(&mutex_voisins);
-    pthread_mutex_lock(&mutex_topologie);
-    pthread_mutex_lock(&mutex_routage);
-}
-
-void unlock_all_mutexes()
-{
-    pthread_mutex_unlock(&mutex_routage);
-    pthread_mutex_unlock(&mutex_topologie);
-    pthread_mutex_unlock(&mutex_voisins);
 }
 
 void *listen_thread(void *arg)
@@ -69,8 +46,13 @@ void *listen_thread(void *arg)
     fd_set readfds;
     struct timeval timeout;
 
-    socket_ecoute = create_broadcast_socket();
-    if (socket_ecoute < 0)
+    if (gethostname(hostname, sizeof(hostname)) != 0)
+    {
+        strcpy(hostname, "Unknown");
+    }
+
+    listen_sock = create_broadcast_socket();
+    if (listen_sock < 0)
     {
         pthread_exit(NULL);
     }
@@ -80,28 +62,28 @@ void *listen_thread(void *arg)
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(BROADCAST_PORT);
 
-    if (bind(socket_ecoute, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
+    if (bind(listen_sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
     {
         perror("Erreur bind");
-        close(socket_ecoute);
+        close(listen_sock);
         pthread_exit(NULL);
     }
 
     printf("🔊 Écoute active sur le port %d\n", BROADCAST_PORT);
 
-    while (en_fonctionnement)
+    while (running)
     {
         FD_ZERO(&readfds);
-        FD_SET(socket_ecoute, &readfds);
+        FD_SET(listen_sock, &readfds);
 
         timeout.tv_sec = 1;
         timeout.tv_usec = 0;
 
-        int select_result = select(socket_ecoute + 1, &readfds, NULL, NULL, &timeout);
+        int select_result = select(listen_sock + 1, &readfds, NULL, NULL, &timeout);
 
         if (select_result < 0)
         {
-            if (errno == EINTR || !en_fonctionnement)
+            if (errno == EINTR || !running)
             {
                 break;
             }
@@ -113,9 +95,9 @@ void *listen_thread(void *arg)
             continue;
         }
 
-        if (FD_ISSET(socket_ecoute, &readfds))
+        if (FD_ISSET(listen_sock, &readfds))
         {
-            bytes_received = recvfrom(socket_ecoute, buffer, BUFFER_SIZE - 1, 0,
+            bytes_received = recvfrom(listen_sock, buffer, BUFFER_SIZE - 1, 0,
                                       (struct sockaddr *)&client_addr, &client_len);
 
             if (bytes_received > 0)
@@ -125,14 +107,17 @@ void *listen_thread(void *arg)
                 // Déterminer le type de message
                 if (strncmp(buffer, "HELLO|", 6) == 0)
                 {
+                    // Traiter message Hello
                     process_hello_message(buffer, inet_ntoa(client_addr.sin_addr));
                 }
                 else if (strncmp(buffer, "LSA|", 4) == 0)
                 {
+                    // Traiter message LSA
                     process_lsa_message(buffer, inet_ntoa(client_addr.sin_addr));
                 }
                 else
                 {
+                    // Message utilisateur normal
                     if (strstr(buffer, hostname) != buffer + 1)
                     {
                         time_t now = time(NULL);
@@ -149,85 +134,11 @@ void *listen_thread(void *arg)
         }
     }
 
-    close(socket_ecoute);
-    socket_ecoute = -1;
+    close(listen_sock);
+    listen_sock = -1;
     pthread_exit(NULL);
 }
 
-int send_message(const char *message)
-{
-    struct sockaddr_in broadcast_addr;
-    char hostname[256];
-    char full_message[BUFFER_SIZE];
-
-    if (!en_fonctionnement) {
-        return -1; // Ne pas envoyer si arrêt en cours
-    }
-
-    snprintf(full_message, sizeof(full_message), "[%s] %s", hostname, message);
-
-    memset(&broadcast_addr, 0, sizeof(broadcast_addr));
-    broadcast_addr.sin_family = AF_INET;
-    broadcast_addr.sin_port = htons(BROADCAST_PORT);
-    broadcast_addr.sin_addr.s_addr = inet_addr(BROADCAST_IP);
-
-    if (sendto(socket_diffusion, full_message, strlen(full_message), 0,
-               (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr)) < 0)
-    {
-        if (en_fonctionnement)
-        { // Ne pas afficher l'erreur si arrêt en cours
-            perror("Erreur sendto");
-        }
-        return -1;
-    }
-    printf("Message envoyé: %s\n", message);
-    return 0;
-}
-
-// Function to discover network interfaces
-int discover_interfaces()
-{
-    FILE *fp;
-    char line[256];
-    char interface_name[32] = {0}, ip[32] = {0}, broadcast[32] = {0};
-    nombre_interfaces = 0;
-
-    fp = popen("ip -o -4 addr show | awk '{print $2,$4}'", "r");
-    if (fp == NULL) {
-        perror("Erreur popen ip a");
-        return -1;
-    }
-
-    while (fgets(line, sizeof(line), fp) != NULL && nombre_interfaces < MAX_INTERFACES) {
-        if (sscanf(line, "%31s %31s", interface_name, ip) == 2) {
-            char *slash = strchr(ip, '/');
-            if (slash) *slash = '\0';
-
-            char *dot1 = strchr(ip, '.');
-            char *dot2 = dot1 ? strchr(dot1 + 1, '.') : NULL;
-            char *dot3 = dot2 ? strchr(dot2 + 1, '.') : NULL;
-            if (dot1 && dot2 && dot3) {
-                int a = atoi(ip);
-                int b = atoi(dot1 + 1);
-                int c = atoi(dot2 + 1);
-                snprintf(broadcast, sizeof(broadcast), "%d.%d.%d.255", a, b, c);
-            } else {
-                strcpy(broadcast, "255.255.255.255");
-            }
-
-            strcpy(interfaces[nombre_interfaces].nom, interface_name);
-            strcpy(interfaces[nombre_interfaces].ip_locale, ip);
-            strcpy(interfaces[nombre_interfaces].ip_diffusion, broadcast);
-            interfaces[nombre_interfaces].active = 1;
-            nombre_interfaces++;
-
-            printf("Nouvelle interface: %s (%s) -> broadcast %s\n",
-                   interface_name, ip, broadcast);
-        }
-    }
-    pclose(fp);
-    return nombre_interfaces;
-}
 
 int create_broadcast_socket()
 {
@@ -261,35 +172,37 @@ int create_broadcast_socket()
     return sock;
 }
 
-void ensure_local_routes()
+int send_message(const char *message)
 {
-    for (int i = 0; i < nombre_interfaces; i++) {
-        // Construire le préfixe réseau (ex : 192.168.1.0/24)
-        char prefix[32];
-        strcpy(prefix, interfaces[i].ip_locale);
-        char *last_dot = strrchr(prefix, '.');
-        if (last_dot) strcpy(last_dot + 1, "0/24");
+    struct sockaddr_in broadcast_addr;
+    char hostname[256];
+    char full_message[BUFFER_SIZE];
 
-        // Vérifier si la route existe déjà
-        char check_cmd[128];
-        snprintf(check_cmd, sizeof(check_cmd),
-            "ip route show | grep -q '^%s '", prefix);
-        int exists = system(check_cmd);
+    if (!running)
+        return -1; // Ne pas envoyer si arrêt en cours
 
-        if (exists != 0) {
-            // Ajouter la route
-            char add_cmd[256];
-            snprintf(add_cmd, sizeof(add_cmd),
-                "ip route add %s dev %s", prefix, interfaces[i].nom);
-            printf("🛣️  Ajout de la route locale : %s\n", add_cmd);
-            system(add_cmd);
+    if (gethostname(hostname, sizeof(hostname)) != 0)
+    {
+        strcpy(hostname, "Unknown");
+    }
+
+    snprintf(full_message, sizeof(full_message), "[%s] %s", hostname, message);
+
+    memset(&broadcast_addr, 0, sizeof(broadcast_addr));
+    broadcast_addr.sin_family = AF_INET;
+    broadcast_addr.sin_port = htons(BROADCAST_PORT);
+    broadcast_addr.sin_addr.s_addr = inet_addr(BROADCAST_IP);
+
+    if (sendto(broadcast_sock, full_message, strlen(full_message), 0,
+               (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr)) < 0)
+    {
+        if (running)
+        { // Ne pas afficher l'erreur si arrêt en cours
+            perror("Erreur sendto");
         }
+        return -1;
     }
-}
 
-void join_or_cancel(pthread_t tid, const char *name, struct timespec *timeout) {
-    if (pthread_timedjoin_np(tid, NULL, timeout) != 0) {
-        printf("Fin du thread %s\n", name);
-        pthread_cancel(tid);
-    }
+    printf("✅ Message envoyé: %s\n", message);
+    return 0;
 }

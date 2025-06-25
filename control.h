@@ -1,8 +1,9 @@
-#pragma once
-void gestion_signal(int sig);
-void lock_all_mutexes(void);
-void unlock_all_mutexes(void);
+#ifndef CONTROL_H
+#define CONTROL_H
+
+void signal_handler(int sig);
 void *listen_thread(void *arg);
+int create_broadcast_socket(void);
 int send_message(const char *message);
-int discover_interfaces(void);
-void ensure_local_routes(void);
+
+#endif

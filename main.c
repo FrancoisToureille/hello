@@ -1,182 +1,197 @@
-// main.c
-#include <stdio.h>      // printf, perror, fflush, stdin, stdout
+#define _POSIX_C_SOURCE 200809L
+#define _GNU_SOURCE
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <signal.h>
+#include <time.h>
+#include <pthread.h>
+
 #include "types.h"
-#include "view.h"
+#include "control.h"
 #include "hello.h"
 #include "lsa.h"
 #include "routing.h"
-#include "control.h"
-#include <stdlib.h>     // system, exit
-#include <string.h>     // strcpy, strcmp, strcspn, strlen
-#include <unistd.h>     // close, sleep, gethostname
-#include <signal.h>     // signal, SIGINT, SIGTERM
-#include <pthread.h>
-#include <time.h>
+#include "view.h"
+#include "dijkstra.h"
 
-// Variables globales (déclarées extern dans types.h)
-voisin_t voisins[NB_MAX_VOISINS];
-interface_reseau_t interfaces[NB_MAX_INTERFACES];
-route_t table_routage[NB_MAX_ROUTES];
-lsa_t base_topologie[NB_MAX_TOPOLOGIE];
-dijkstra_node_t noeuds_dijkstra[NB_MAX_VOISINS];
+// Déclarations des variables globales
+neighbor_t neighbors[MAX_NEIGHBORS];
+int neighbor_count = 0;
+pthread_mutex_t neighbor_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-int nombre_voisins = 0;
-int nombre_interfaces = 0;
-int nombre_routes = 0;
-int taille_topologie = 0;
-int nombre_noeuds = 0;
-int socket_diffusion = -1;
-int socket_ecoute = -1;
-volatile int en_fonctionnement = 1;
+interface_t interfaces[MAX_INTERFACES];
+int interface_count = 0;
 
-// Mutex globaux (déclarés extern dans types.h)
-pthread_mutex_t mutex_voisins = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_routage = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_topologie = PTHREAD_MUTEX_INITIALIZER;
+route_t routing_table[MAX_ROUTES];
+int route_count = 0;
+pthread_mutex_t routing_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// Prototypes
-void maj_routing_table(void);
-void gerer_message_hello(const char *message, const char *ip_expediteur);
-void gerer_message_lsa(const char *message, const char *ip_expediteur);
-void diffuser_lsa(const char *message_lsa);
-void gestion_signal(int signal);
-void join_or_cancel(pthread_t thread, const char *nom_thread, const struct timespec *timeout);
-int discover_interfaces(void);
-void ensure_local_routes(void);
-int create_broadcast_socket(void);
-void *listen_thread(void *arg);
-void *thread_hello(void *arg);
-void *lsa_thread(void *arg);
-void initialize_own_lsa(void);
-void voirVoisins(void);
-void afficher_table_routage(void);
-int send_message(const char *msg);
+lsa_t topology_db[MAX_NEIGHBORS];
+int topology_db_size = 0;
+pthread_mutex_t topology_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+dijkstra_node_t nodes[MAX_NEIGHBORS];
+int node_count = 0;
+
+volatile int running = 1;
+int broadcast_sock = -1;
+int listen_sock = -1;
 
 int main(int argc, char *argv[])
 {
-    pthread_t thread_ecoute, thread_hello_id, thread_lsa_id;
-    char entree[TAILLE_BUFFER];
-    char nom_hote[256];
+    pthread_t listen_tid, hello_tid, lsa_tid;
+    char input[BUFFER_SIZE];
+    char hostname[256];
 
-    socket_diffusion = -1;
-    socket_ecoute = -1;
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
 
-    signal(SIGINT, gestion_signal);
-    signal(SIGTERM, gestion_signal);
-
-    if (gethostname(nom_hote, sizeof(nom_hote)) != 0) {
-        perror("Erreur récupération nom hôte");
-        strcpy(nom_hote, "Inconnu");
+    if (gethostname(hostname, sizeof(hostname)) != 0)
+    {
+        strcpy(hostname, "Unknown");
     }
 
-    printf("Routeur actif : %s\n", nom_hote);
+    printf("=== Routeur Communication System ===\n");
+    printf("🖥️  Routeur: %s\n", hostname);
+    printf("🌐 Réseau broadcast: %s:%d\n", BROADCAST_IP, BROADCAST_PORT);
     printf("=====================================\n\n");
-    printf("Détection des interfaces réseau locales...\n");
+
+    // Découverte des interfaces réseau
+    printf("🔍 Découverte des interfaces réseau...\n");
     if (discover_interfaces() <= 0)
     {
-        fprintf(stderr, "Aucune interface réseau détectée, arrêt.\n");
+        printf("❌ Aucune interface réseau découverte\n");
         return 1;
     }
 
     ensure_local_routes();
 
-    // Création du socket broadcast
-    socket_diffusion = create_broadcast_socket();
-    if (socket_diffusion < 0)
+    // Création du socket de broadcast
+    broadcast_sock = create_broadcast_socket();
+    if (broadcast_sock < 0)
     {
-        fprintf(stderr, "Échec création socket broadcast.\n");
         return 1;
     }
 
-    if (pthread_create(&thread_ecoute, NULL, listen_thread, NULL) != 0)
+    // Lancement des threads
+    printf("🚀 Démarrage des services...\n");
+
+    if (pthread_create(&listen_tid, NULL, listen_thread, NULL) != 0 ||
+        pthread_create(&hello_tid, NULL, hello_thread, NULL) != 0 ||
+        pthread_create(&lsa_tid, NULL, lsa_thread, NULL) != 0)
     {
-        perror("Erreur création thread d'écoute");
-        close(socket_diffusion);
+        perror("Erreur création d’un des threads");
+        close(broadcast_sock);
         return 1;
     }
 
-    if (pthread_create(&thread_hello_id, NULL, thread_hello, NULL) != 0)
-    {
-        perror("Erreur création thread Hello");
-        close(socket_diffusion);
-        return 1;
-    }
-
-    if (pthread_create(&thread_lsa_id, NULL, lsa_thread, NULL) != 0)
-    {
-        perror("Erreur création thread LSA");
-        close(socket_diffusion);
-        return 1;
-    }
-
-    // Pause pour laisser démarrer tous les services
-    sleep(5);
-
-    // Initialisation du LSA local dans la base
+    sleep(2); // Temps pour initialisation des threads
     initialize_own_lsa();
 
-    printf("💬 Commandes disponibles: 'voisins', 'routes', 'stop'\n");
+    printf("✅ Tous les services sont actifs\n\n");
+    printf("💬 Commandes disponibles:\n");
+    printf("  - Tapez votre message pour l'envoyer\n");
+    printf("  - 'neighbors' : Afficher les voisins\n");
+    printf("  - 'routes' : Afficher la table de routage\n");
+    printf("  - 'topology' : Afficher la topologie\n");
+    printf("  - 'debug' : Voir la base topologique\n");
+    printf("  - 'status' : État du système\n");
+    printf("  - 'quit' ou 'exit' : Quitter\n\n");
 
-    while (en_fonctionnement)
+    while (running)
     {
-        printf("💬 Saisissez une commande: ");
+        printf("💬 Commande: ");
         fflush(stdout);
 
-        if (fgets(entree, sizeof(entree), stdin) == NULL)
+        if (!fgets(input, sizeof(input), stdin)) break;
+        input[strcspn(input, "\n")] = 0;
+
+        if (strcmp(input, "quit") == 0 || strcmp(input, "exit") == 0)
         {
-            break;
-        }
-
-        entree[strcspn(entree, "\n")] = 0;
-
-        if (strcmp(entree, "voisins") == 0) {
-            voirVoisins();
-        } else if (strcmp(entree, "stop") == 0) {
             system("ip route flush table 100");
             break;
-        } else if (strcmp(entree, "routes") == 0) {
-            printf("🔄 Calcul des routes en cours...\n");
-            struct timespec delai;
-            clock_gettime(CLOCK_REALTIME, &delai);
-            delai.tv_sec += 3; // Timeout 3 secondes
+        }
+        else if (strcmp(input, "neighbors") == 0)
+        {
+            show_neighbors();
+        }
+        else if (strcmp(input, "routes") == 0)
+        {
+            printf("🔄 Calcul des routes...\n");
+            struct timespec timeout;
+            clock_gettime(CLOCK_REALTIME, &timeout);
+            timeout.tv_sec += 3;
 
-            if (pthread_mutex_timedlock(&mutex_routage, &delai) == 0)
+            if (pthread_mutex_timedlock(&routing_mutex, &timeout) == 0)
             {
-                afficher_table_routage();
-                pthread_mutex_unlock(&mutex_routage);
+                show_routing_table();
+                pthread_mutex_unlock(&routing_mutex);
             }
             else
             {
-                printf("⚠️  Aucune route disponible pour le moment.\n");
+                printf("❌ Timeout - impossible d'accéder aux routes\n");
             }
-        } else if (strlen(entree) > 0) {
-            send_message(entree);
+        }
+        else if (strcmp(input, "topology") == 0)
+        {
+            printf("🔄 Lecture de la topologie...\n");
+            struct timespec timeout;
+            clock_gettime(CLOCK_REALTIME, &timeout);
+            timeout.tv_sec += 3;
+
+            if (pthread_mutex_timedlock(&topology_mutex, &timeout) == 0)
+            {
+                show_topology();
+                pthread_mutex_unlock(&topology_mutex);
+            }
+            else
+            {
+                printf("❌ Timeout - impossible d'accéder à la topologie\n");
+            }
+        }
+        else if (strcmp(input, "debug") == 0)
+        {
+            debug_topology_db();
+        }
+        else if (strcmp(input, "status") == 0)
+        {
+            check_system_status();
+        }
+        else if (strlen(input) > 0)
+        {
+            send_message(input);
         }
     }
 
-    en_fonctionnement = 0;
+    // Fin du programme proprement
+    running = 0;
+    if (broadcast_sock >= 0) close(broadcast_sock);
+    if (listen_sock >= 0) close(listen_sock);
 
-    // Fermeture des sockets pour débloquer les threads
-    if (socket_diffusion >= 0)
+    struct timespec timeout_spec = {2, 0};
+    printf("🛑 Arrêt des services...\n");
+
+    if (pthread_timedjoin_np(listen_tid, NULL, &timeout_spec) != 0)
     {
-        close(socket_diffusion);
-        socket_diffusion = -1;
+        printf("Timeout - arrêt forcé du thread d'écoute\n");
+        pthread_cancel(listen_tid);
     }
-    if (socket_ecoute >= 0)
+
+    if (pthread_timedjoin_np(hello_tid, NULL, &timeout_spec) != 0)
     {
-        close(socket_ecoute);
-        socket_ecoute = -1;
+        printf("Timeout - arrêt forcé du thread Hello\n");
+        pthread_cancel(hello_tid);
     }
 
-    struct timespec timeout_thread;
-    timeout_thread.tv_sec = 2;
-    timeout_thread.tv_nsec = 0;
+    if (pthread_timedjoin_np(lsa_tid, NULL, &timeout_spec) != 0)
+    {
+        printf("Timeout - arrêt forcé du thread LSA\n");
+        pthread_cancel(lsa_tid);
+    }
 
-    printf("🛑 Arrêt du routeur.\n");
-
-    join_or_cancel(thread_ecoute, "d'écoute", &timeout_thread);
-    join_or_cancel(thread_hello_id, "Hello", &timeout_thread);
-    join_or_cancel(thread_lsa_id, "LSA", &timeout_thread);
-
+    printf("👋 Programme terminé.\n");
     return 0;
 }
