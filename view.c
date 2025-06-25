@@ -4,9 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
-void show_topology(void)
-{
-
+void show_topology(void) {
     printf("\n=== Topologie du réseau ===\n");
     printf("%-15s %-8s %-10s %-15s\n", "Routeur", "Séquence", "Liens", "Voisins");
     printf("--------------------------------------------------------\n");

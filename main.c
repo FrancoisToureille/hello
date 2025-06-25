@@ -44,28 +44,18 @@ int main(int argc, char *argv[])
     char input[BUFFER_SIZE];
     char hostname[256];
 
-    // Initialiser les sockets à -1
     broadcast_sock = -1;
     listen_sock = -1;
 
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
-
-    if (gethostname(hostname, sizeof(hostname)) != 0)
-    {
-        strcpy(hostname, "Unknown");
-    }
-
-    printf("=== Routeur Communication System ===\n");
+    
     printf("🖥️  Routeur: %s\n", hostname);
     printf("🌐 Réseau broadcast: %s:%d\n", BROADCAST_IP, BROADCAST_PORT);
     printf("=====================================\n\n");
-
-    // ÉTAPE 1: Découvrir les interfaces réseau EN PREMIER
     printf("🔍 Découverte des interfaces réseau...\n");
     if (discover_interfaces() <= 0)
     {
-        printf("❌ Aucune interface réseau découverte\n");
         return 1;
     }
 
@@ -78,9 +68,6 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // ÉTAPE 3: Démarrer TOUS les threads
-    printf("🚀 Démarrage des services...\n");
-
     if (pthread_create(&listen_tid, NULL, listen_thread, NULL) != 0)
     {
         perror("Erreur création thread d'écoute");
@@ -88,7 +75,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    if (pthread_create(&hello_tid, NULL, hello_thread, NULL) != 0)
+    if (pthread_create(&hello_tid, NULL, thread_hello, NULL) != 0)
     {
         perror("Erreur création thread Hello");
         close(broadcast_sock);
@@ -103,18 +90,16 @@ int main(int argc, char *argv[])
     }
 
     // Attendre que tous les services se lancent
-    sleep(2);
+    sleep(5);
 
     // Initialiser notre propre LSA dans la base de données
     initialize_own_lsa();
 
-    printf("✅ Tous les services sont actifs\n\n");
-    printf("💬 Commandes disponibles:\n");
-    printf("  - Tapez votre message pour l'envoyer\n");
-    printf("  - 'neighbors' : Afficher les voisins\n");
-    printf("  - 'routes' : Afficher la table de routage\n");
-    printf("  - 'topology' : Afficher la topologie\n");
-    printf("  - 'quit' ou 'exit' : Quitter\n\n");
+    printf("💬 Commandes:\n");
+    printf("  - 'neighbors' n");
+    printf("  - 'routes' \n");
+    printf("  - 'topology'\n");
+    printf("  - 'stop'\n");
 
     // ÉTAPE 4: Boucle principale avec commandes
     while (running)
@@ -129,9 +114,9 @@ int main(int argc, char *argv[])
 
         input[strcspn(input, "\n")] = 0;
 
-        if (strcmp(input, "quit") == 0 || strcmp(input, "exit") == 0)
+        if (strcmp(input, "stop") == 0)
         {
-            system("ip route flush table 100");
+            system("ip route flush table 50");
             break;
         }
         else if (strcmp(input, "neighbors") == 0)
@@ -152,7 +137,7 @@ int main(int argc, char *argv[])
             }
             else
             {
-                printf("❌ Timeout - impossible d'accéder aux routes\n");
+                printf("no routes\n");
             }
         }
         else if (strcmp(input, "topology") == 0)
@@ -216,7 +201,5 @@ int main(int argc, char *argv[])
         printf("Timeout - arrêt forcé du thread LSA\n");
         pthread_cancel(lsa_tid);
     }
-
-    printf("👋 Programme terminé.\n");
     return 0;
 }

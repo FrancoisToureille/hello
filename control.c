@@ -27,7 +27,6 @@ void signal_handler(int sig)
     }
 }
 
-
 // Initialisation des mutex
 void lock_all_mutexes()
 {
@@ -56,11 +55,6 @@ void *listen_thread(void *arg)
     char hostname[256];
     fd_set readfds;
     struct timeval timeout;
-
-    if (gethostname(hostname, sizeof(hostname)) != 0)
-    {
-        strcpy(hostname, "Unknown");
-    }
 
     listen_sock = create_broadcast_socket();
     if (listen_sock < 0)
@@ -118,17 +112,14 @@ void *listen_thread(void *arg)
                 // Déterminer le type de message
                 if (strncmp(buffer, "HELLO|", 6) == 0)
                 {
-                    // Traiter message Hello
                     process_hello_message(buffer, inet_ntoa(client_addr.sin_addr));
                 }
                 else if (strncmp(buffer, "LSA|", 4) == 0)
                 {
-                    // Traiter message LSA
                     process_lsa_message(buffer, inet_ntoa(client_addr.sin_addr));
                 }
                 else
                 {
-                    // Message utilisateur normal
                     if (strstr(buffer, hostname) != buffer + 1)
                     {
                         time_t now = time(NULL);
@@ -156,12 +147,8 @@ int send_message(const char *message)
     char hostname[256];
     char full_message[BUFFER_SIZE];
 
-    if (!running)
+    if (!running) {
         return -1; // Ne pas envoyer si arrêt en cours
-
-    if (gethostname(hostname, sizeof(hostname)) != 0)
-    {
-        strcpy(hostname, "Unknown");
     }
 
     snprintf(full_message, sizeof(full_message), "[%s] %s", hostname, message);
@@ -180,8 +167,7 @@ int send_message(const char *message)
         }
         return -1;
     }
-
-    printf("✅ Message envoyé: %s\n", message);
+    printf("Message envoyé: %s\n", message);
     return 0;
 }
 // Function to discover network interfaces
@@ -199,13 +185,10 @@ int discover_interfaces()
     }
 
     while (fgets(line, sizeof(line), fp) != NULL && interface_count < MAX_INTERFACES) {
-        // Format attendu : eth0 192.168.1.1/24
         if (sscanf(line, "%15s %15s", interface_name, ip) == 2) {
-            // Retirer le /xx du préfixe
             char *slash = strchr(ip, '/');
             if (slash) *slash = '\0';
 
-            // Calculer l'adresse de broadcast (optionnel, à adapter si besoin)
             char *dot1 = strchr(ip, '.');
             char *dot2 = dot1 ? strchr(dot1 + 1, '.') : NULL;
             char *dot3 = dot2 ? strchr(dot2 + 1, '.') : NULL;
@@ -229,7 +212,6 @@ int discover_interfaces()
         }
     }
     pclose(fp);
-
     return interface_count;
 }
 

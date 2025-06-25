@@ -55,7 +55,6 @@ int initialize_nodes(dijkstra_node_t *nodes)
             }
         }
     }
-
     return node_count;
 }
 

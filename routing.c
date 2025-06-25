@@ -77,12 +77,10 @@ void build_routing_table(dijkstra_node_t *nodes, int node_count, int source_inde
     }
 }
 
-
-
 void update_kernel_routing_table()
 {
     // Ne supprime que les routes dont le next-hop n'est pas 0.0.0.0 (pas les locales)
-    system("ip route flush table 100");
+    system("ip route flush table 50");
 
     pthread_mutex_lock(&routing_mutex);
     for (int i = 0; i < route_count; i++)
@@ -94,21 +92,18 @@ void update_kernel_routing_table()
             continue;
 
         snprintf(cmd, sizeof(cmd),
-                 "ip route replace %s via %s dev %s table 100",
+                 "ip route replace %s via %s dev %s table 50",
                  routing_table[i].destination,
-                 routing_table[i].next_hop,
-                 routing_table[i].interface);
+                 routing_table[i].next_hop);
         printf("🛣️  Ajout route OSPF : %s\n", cmd);
         int ret = system(cmd);
-        if (ret != 0)
-        {
+        if (ret != 0) {
             printf("⚠️  Erreur lors de l'ajout de la route: %s\n", cmd);
         }
     }
     pthread_mutex_unlock(&routing_mutex);
 }
 
-// Fonction pour nettoyer les voisins expirés
 void cleanup_expired_neighbors()
 {
     pthread_mutex_lock(&neighbor_mutex);

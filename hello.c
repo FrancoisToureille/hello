@@ -9,15 +9,10 @@
 #include <pthread.h>
 #include <time.h>
 
-void *hello_thread(void *arg)
+void *thread_hello(void *arg)
 {
     char hostname[256];
     char hello_message[BUFFER_SIZE];
-
-    if (gethostname(hostname, sizeof(hostname)) != 0)
-    {
-        strcpy(hostname, "Unknown");
-    }
 
     while (running)
     {
@@ -27,14 +22,13 @@ void *hello_thread(void *arg)
         {
             if (interfaces[i].is_active)
             {
-                snprintf(hello_message, sizeof(hello_message),
-                         "HELLO|%s|%s|%d", hostname, interfaces[i].ip_address, (int)time(NULL));
+                snprintf(hello_message, sizeof(hello_message), "HELLO|%s|%s|%d", hostname, interfaces[i].ip_address, (int)time(NULL));
 
                 printf("  -> Interface %s (%s) vers %s\n",
                        interfaces[i].name, interfaces[i].ip_address, interfaces[i].broadcast_ip);
 
-                int hello_sock = create_broadcast_socket();
-                if (hello_sock >= 0)
+                int hello_socket = create_broadcast_socket();
+                if (hello_socketet >= 0)
                 {
                     struct sockaddr_in broadcast_addr;
                     memset(&broadcast_addr, 0, sizeof(broadcast_addr));
@@ -42,7 +36,7 @@ void *hello_thread(void *arg)
                     broadcast_addr.sin_port = htons(BROADCAST_PORT);
                     broadcast_addr.sin_addr.s_addr = inet_addr(interfaces[i].broadcast_ip);
 
-                    if (sendto(hello_sock, hello_message, strlen(hello_message), 0,
+                    if (sendto(hello_socket, hello_message, strlen(hello_message), 0,
                                (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr)) < 0)
                     {
                         perror("Erreur envoi Hello");
@@ -51,8 +45,7 @@ void *hello_thread(void *arg)
                     {
                         printf("  ✅ Hello envoyé sur %s\n", interfaces[i].broadcast_ip);
                     }
-
-                    close(hello_sock);
+                    close(hello_socket);
                 }
                 else
                 {
@@ -63,7 +56,6 @@ void *hello_thread(void *arg)
 
         cleanup_expired_neighbors();
 
-        // Mettre à jour notre LSA avec les nouveaux voisins
         initialize_own_lsa();
 
         sleep(HELLO_INTERVAL);
