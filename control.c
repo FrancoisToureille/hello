@@ -31,7 +31,7 @@ extern pthread_mutex_t mutex_voisins;
 
 void signal_handler(int sig)
 {
-    running = 0;
+    en_fonctionnement = 0;
     printf("\nArrêt en cours..\n");
 
     if (socket_diffusion >= 0)
@@ -89,7 +89,7 @@ void *listen_thread(void *arg)
 
     printf("🔊 Écoute active sur le port %d\n", BROADCAST_PORT);
 
-    while (running)
+    while (en_fonctionnement)
     {
         FD_ZERO(&readfds);
         FD_SET(socket_ecoute, &readfds);
@@ -101,7 +101,7 @@ void *listen_thread(void *arg)
 
         if (select_result < 0)
         {
-            if (errno == EINTR || !running)
+            if (errno == EINTR || !en_fonctionnement)
             {
                 break;
             }
@@ -160,7 +160,7 @@ int send_message(const char *message)
     char hostname[256];
     char full_message[BUFFER_SIZE];
 
-    if (!running) {
+    if (!en_fonctionnement) {
         return -1; // Ne pas envoyer si arrêt en cours
     }
 
@@ -174,7 +174,7 @@ int send_message(const char *message)
     if (sendto(socket_diffusion, full_message, strlen(full_message), 0,
                (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr)) < 0)
     {
-        if (running)
+        if (en_fonctionnement)
         { // Ne pas afficher l'erreur si arrêt en cours
             perror("Erreur sendto");
         }
