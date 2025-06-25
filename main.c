@@ -50,7 +50,7 @@ void *lsa_thread(void *arg);
 void initialize_own_lsa(void);
 void voirVoisins(void);
 void show_routing_table(void);
-void send_message(const char *msg);
+int send_message(const char *msg);
 
 int main(int argc, char *argv[])
 {
