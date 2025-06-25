@@ -16,8 +16,6 @@ void *thread_hello(void *arg)
 
     while (running)
     {
-        printf("📡 Envoi des messages Hello...\n");
-
         for (int i = 0; i < interface_count; i++)
         {
             if (interfaces[i].is_active)
@@ -28,7 +26,7 @@ void *thread_hello(void *arg)
                        interfaces[i].name, interfaces[i].ip_address, interfaces[i].broadcast_ip);
 
                 int hello_socket = create_broadcast_socket();
-                if (hello_socketet >= 0)
+                if (hello_socket >= 0)
                 {
                     struct sockaddr_in broadcast_addr;
                     memset(&broadcast_addr, 0, sizeof(broadcast_addr));
@@ -39,7 +37,7 @@ void *thread_hello(void *arg)
                     if (sendto(hello_socket, hello_message, strlen(hello_message), 0,
                                (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr)) < 0)
                     {
-                        perror("Erreur envoi Hello");
+                        perror("Echec du Hello");
                     }
                     else
                     {
