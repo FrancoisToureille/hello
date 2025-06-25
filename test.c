@@ -725,14 +725,18 @@ void build_routing_table(dijkstra_node_t *nodes, int node_count, int source_inde
                 const char *dest_ip = topology_db[j].links[k].ip_address;
 
                 // Vérifie que ce n'est pas une de nos propres interfaces
-                int is_own_ip = 0;
+                int is_own_network = 0;
                 for (int m = 0; m < interface_count; m++) {
-                    if (strcmp(dest_ip, interfaces[m].ip_address) == 0) {
-                        is_own_ip = 1;
+                    char local_prefix[32];
+                    strcpy(local_prefix, interfaces[m].ip_address);
+                    char *last_dot = strrchr(local_prefix, '.');
+                    if (last_dot) strcpy(last_dot + 1, "0/24");
+                    if (strcmp(prefix, local_prefix) == 0) {
+                        is_own_network = 1;
                         break;
                     }
                 }
-                if (is_own_ip)
+                if (is_own_network)
                     continue;
 
                 // Calcule le préfixe réseau (ex: 10.1.0.0/24)
