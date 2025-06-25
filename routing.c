@@ -14,16 +14,16 @@ void construire_table_routage(dijkstra_node_t *noeuds, int nb_noeuds, int index_
 
         // Chercher le LSA correspondant dans la base topologique
         for (int j = 0; j < taille_topologie; j++) {
-            if (strcmp(topologie_db[j].id_routeur, noeuds[i].id_routeur) != 0) continue;
+            if (strcmp(topologie_db[j].router_id, noeuds[i].router_id) != 0) continue;
 
             // Pour chaque lien du routeur distant
             for (int k = 0; k < topologie_db[j].nb_liens; k++) {
-                const char *ip_dest = topologie_db[j].liens[k].adresse_ip;
+                const char *ip_dest = topologie_db[j].liens[k].ip_address;
 
                 // Vérifier que ce n'est pas une de nos propres interfaces
                 int est_ip_locale = 0;
                 for (int m = 0; m < nombre_interfaces; m++) {
-                    if (strcmp(ip_dest, interfaces[m].adresse_ip) == 0) {
+                    if (strcmp(ip_dest, interfaces[m].ip_address) == 0) {
                         est_ip_locale = 1;
                         break;
                     }
@@ -52,7 +52,7 @@ void construire_table_routage(dijkstra_node_t *noeuds, int nb_noeuds, int index_
                 int est_reseau_local = 0;
                 for (int m = 0; m < nombre_interfaces; m++) {
                     char prefixe_local[32];
-                    strcpy(prefixe_local, interfaces[m].adresse_ip);
+                    strcpy(prefixe_local, interfaces[m].ip_address);
                     char *dernier_point = strrchr(prefixe_local, '.');
                     if (dernier_point) strcpy(dernier_point + 1, "0/24");
                     if (strcmp(prefixe, prefixe_local) == 0) {
@@ -64,13 +64,13 @@ void construire_table_routage(dijkstra_node_t *noeuds, int nb_noeuds, int index_
                     continue;
 
                 // Ajouter la route
-                if (nombre_routes < MAX_ROUTES) {
+                if (nombre_routes < NB_MAX_ROUTES) {
                     strcpy(table_routage[nombre_routes].destination, prefixe);
-                    strcpy(table_routage[nombre_routes].prochain_saut, noeuds[i].prochain_saut);
+                    strcpy(table_routage[nombre_routes].next_hop, noeuds[i].next_hop);
                     strcpy(table_routage[nombre_routes].interface, noeuds[i].interface);
-                    table_routage[nombre_routes].metrique = noeuds[i].distance + topologie_db[j].liens[k].metrique;
-                    table_routage[nombre_routes].nombre_sauts = (table_routage[nombre_routes].metrique + 999) / 1000;
-                    table_routage[nombre_routes].debit = topologie_db[j].liens[k].debit_mbps;
+                    table_routage[nombre_routes].metric = noeuds[i].distance + topologie_db[j].liens[k].metric;
+                    table_routage[nombre_routes].namebre_sauts = (table_routage[nombre_routes].metric + 999) / 1000;
+                    table_routage[nombre_routes].debit = topologie_db[j].liens[k].bandwidth_mbps;
                     nombre_routes++;
                 }
             }
@@ -87,13 +87,13 @@ void mettre_a_jour_table_kernel()
     for (int i = 0; i < nombre_routes; i++)
     {
         char commande[256];
-        if (strcmp(table_routage[i].prochain_saut, "0.0.0.0") == 0) {
+        if (strcmp(table_routage[i].next_hop, "0.0.0.0") == 0) {
             continue;
         }
         snprintf(commande, sizeof(commande),
                  "ip route replace %s via %s dev %s",
                  table_routage[i].destination,
-                 table_routage[i].prochain_saut,
+                 table_routage[i].next_hop,
                  table_routage[i].interface);
         printf("🛣️  Route OSPF ajoutée : %s\n", commande);
         int retour = system(commande);
@@ -114,8 +114,8 @@ void supprimer_voisins_expires()
     {
         if (maintenant - voisins[i].dernier_hello > DELAI_EXPIRATION_VOISINS)
         {
-            printf("❌ Voisin expiré détecté : %s\n", voisins[i].id_routeur);
-            voisins[i].etat_lien = 0;
+            printf("❌ Voisin expiré détecté : %s\n", voisins[i].router_id);
+            voisins[i].link_state = 0;
         }
     }
 

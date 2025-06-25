@@ -12,11 +12,11 @@
 #include <signal.h>     // signal, SIGINT, SIGTERM
 
 // Variables globales
-neighbor_t voisins[MAX_VOISINS];
-interface_t interfaces_reseau[MAX_INTERFACES];
-route_t table_routage[MAX_ROUTES];
-lsa_t base_topologie[MAX_VOISINS];
-dijkstra_node_t noeuds_dijkstra[MAX_VOISINS];
+voisin_t voisins[NB_MAX_VOISINS];
+interface_reseau_t interfaces_reseau[NB_MAX_INTERFACES];
+route_t table_routage[NB_MAX_ROUTES];
+lsa_t base_topologie[NB_MAX_VOISINS];
+dijkstra_node_t noeuds_dijkstra[NB_MAX_VOISINS];
 
 int nombre_voisins = 0;
 int nombre_interfaces = 0;
@@ -42,7 +42,7 @@ void gestion_signal(int signal);
 int main(int argc, char *argv[])
 {
     pthread_t thread_ecoute, thread_hello, thread_lsa;
-    char entree[BUFFER_SIZE];
+    char entree[TAILLE_BUFFER];
     char nom_hote[256];
 
     socket_broadcast = -1;

@@ -16,11 +16,11 @@ void afficher_voisins()
     for (int i = 0; i < nombre_voisins; i++)
     {
         printf("%-15s %-15s %-8d %-12d %-8s\n",
-               voisins[i].id_routeur,
-               voisins[i].adresse_ip,
-               voisins[i].metrique,
-               voisins[i].debit_mbps,
-               voisins[i].etat_lien ? "ACTIF" : "INACTIF");
+               voisins[i].router_id,
+               voisins[i].ip_address,
+               voisins[i].metric,
+               voisins[i].bandwidth_mbps,
+               voisins[i].link_state ? "ACTIF" : "INACTIF");
     }
 
     pthread_mutex_unlock(&mutex_voisins);
@@ -36,9 +36,9 @@ void afficher_table_routage()
     {
         printf("%-15s %-15s %-12s %-8d %-6d\n",
                table_routage[i].destination,
-               table_routage[i].prochain_saut,
+               table_routage[i].next_hop,
                table_routage[i].interface,
-               table_routage[i].metrique,
-               table_routage[i].nombre_sauts);
+               table_routage[i].metric,
+               table_routage[i].namebre_sauts);
     }
 }

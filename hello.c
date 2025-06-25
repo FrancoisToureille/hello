@@ -17,11 +17,11 @@ void *thread_hello(void *arg)
         strcpy(hostname, "Unknown");
     }
 
-    char hello_message[BUFFER_SIZE];
+    char hello_message[TAILLE_BUFFER];
 
-    while (running)
+    while (en_fonctionnement)
     {
-        for (int i = 0; i < interface_count; i++)
+        for (int i = 0; i < nombre_interfaces; i++)
         {
             if (!interfaces[i].is_active)
                 continue;
@@ -42,7 +42,7 @@ void *thread_hello(void *arg)
 
             struct sockaddr_in broadcast_addr = {0};
             broadcast_addr.sin_family = AF_INET;
-            broadcast_addr.sin_port = htons(BROADCAST_PORT);
+            broadcast_addr.sin_port = htons(PORT_DIFFUSION);
             broadcast_addr.sin_addr.s_addr = inet_addr(interfaces[i].broadcast_ip);
 
             if (sendto(hello_socket, hello_message, strlen(hello_message), 0,
@@ -60,7 +60,7 @@ void *thread_hello(void *arg)
 
         supprimerVoisins();
         initialize_own_lsa();
-        sleep(HELLO_INTERVAL);
+        sleep(INTERVALLE_HELLO);
     }
 
     pthread_exit(NULL);
@@ -117,12 +117,12 @@ void process_hello_message(const char *message, const char *sender_ip)
 
     printf("🌐 IP du voisin extraite: %s\n", router_ip);
 
-    pthread_mutex_lock(&neighbor_mutex);
+    pthread_mutex_lock(&mutex_voisins);
 
     int found = -1;
-    for (int i = 0; i < neighbor_count; i++)
+    for (int i = 0; i < nombre_voisins; i++)
     {
-        if (strcmp(neighbors[i].router_id, router_id) == 0)
+        if (strcmp(voisins[i].router_id, router_id) == 0)
         {
             found = i;
             break;
@@ -131,22 +131,22 @@ void process_hello_message(const char *message, const char *sender_ip)
 
     if (found >= 0)
     {
-        neighbors[found].last_hello = time(NULL);
-        neighbors[found].link_state = 1;
+        voisins[found].last_hello = time(NULL);
+        voisins[found].link_state = 1;
         printf("🔄 Mise à jour voisin existant: %s\n", router_id);
     }
-    else if (neighbor_count < MAX_NEIGHBORS)
+    else if (nombre_voisins < NB_MAX_VOISINS)
     {
         printf("➕ Ajout nouveau voisin %s (%s)\n", router_id, router_ip);
-        strcpy(neighbors[neighbor_count].router_id, router_id);
-        strcpy(neighbors[neighbor_count].ip_address, router_ip);
-        neighbors[neighbor_count].metric = 1;
-        neighbors[neighbor_count].last_hello = time(NULL);
-        neighbors[neighbor_count].bandwidth_mbps = 100;
-        neighbors[neighbor_count].link_state = 1;
+        strcpy(voisins[nombre_voisins].router_id, router_id);
+        strcpy(voisins[nombre_voisins].ip_address, router_ip);
+        voisins[nombre_voisins].metric = 1;
+        voisins[nombre_voisins].last_hello = time(NULL);
+        voisins[nombre_voisins].bandwidth_mbps = 100;
+        voisins[nombre_voisins].link_state = 1;
 
         int matched = 0;
-        for (int j = 0; j < interface_count; j++)
+        for (int j = 0; j < nombre_interfaces; j++)
         {
             printf("🔍 Test interface %s (%s) avec IP %s\n",
                    interfaces[j].name, interfaces[j].ip_address, router_ip);
@@ -154,7 +154,7 @@ void process_hello_message(const char *message, const char *sender_ip)
             // Comparaison par préfixe des 3 premiers octets
             if (strncmp(router_ip, interfaces[j].ip_address, strlen(interfaces[j].ip_address) - 2) == 0)
             {
-                strcpy(neighbors[neighbor_count].interface, interfaces[j].name);
+                strcpy(voisins[nombre_voisins].interface, interfaces[j].name);
                 matched = 1;
                 break;
             }
@@ -163,15 +163,15 @@ void process_hello_message(const char *message, const char *sender_ip)
         if (!matched)
         {
             // Patch de secours
-            strcpy(neighbors[neighbor_count].interface, interfaces[0].name);
+            strcpy(voisins[nombre_voisins].interface, interfaces[0].name);
             printf("⚠️  Aucune interface correspondante. Utilisation de %s par défaut.\n",
                    interfaces[0].name);
         }
 
         printf("🤝 Nouveau voisin découvert: %s (%s via %s)\n",
-               router_id, router_ip, neighbors[neighbor_count].interface);
+               router_id, router_ip, voisins[nombre_voisins].interface);
 
-        neighbor_count++;
+        nombre_voisins++;
     }
     else
     {
