@@ -15,11 +15,6 @@
 #include "hello.h"
 #include "lsa.h"
 
-#define BROADCAST_IP "255.255.255.255"  // Définition manquante dans types.h
-#define BUFFER_SIZE TAILLE_BUFFER        // Pour cohérence avec types.h
-#define BROADCAST_PORT PORT_DIFFUSION    // Pour cohérence avec types.h
-#define MAX_INTERFACES NB_MAX_INTERFACES // Pour cohérence
-
 void signal_handler(int sig)
 {
     running = 0;

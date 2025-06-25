@@ -5,27 +5,6 @@
 #include "types.h"
 #include "view.h"
 
-// Fonction pour afficher la table des voisins
-void show_neighbors()
-{
-    pthread_mutex_lock(&neighbor_mutex);
-
-    printf("\n=== Table des voisins ===\n");
-    printf("%-15s %-15s %-8s %-10s %-8s\n", "Routeur", "IP", "Métrique", "Bande Pass.", "État");
-    printf("--------------------------------------------------------\n");
-
-    for (int i = 0; i < neighbor_count; i++)
-    {
-        printf("%-15s %-15s %-8d %-10d %-8s\n",
-               neighbors[i].router_id,
-               neighbors[i].ip_address,
-               neighbors[i].metric,
-               neighbors[i].bandwidth_mbps,
-               neighbors[i].link_state ? "UP" : "DOWN");
-    }
-
-    pthread_mutex_unlock(&neighbor_mutex);
-}
 
 void print_usage(char *program_name)
 {
@@ -33,28 +12,6 @@ void print_usage(char *program_name)
     printf("Le programme démarre automatiquement en mode écoute.\n");
     printf("Tapez vos messages et appuyez sur Entrée pour les envoyer.\n");
     printf("Tapez 'quit' ou 'exit' pour quitter.\n");
-}
-
-// Fonction pour afficher la table des voisins
-void show_neighbors()
-{
-    pthread_mutex_lock(&neighbor_mutex);
-
-    printf("\n=== Table des voisins ===\n");
-    printf("%-15s %-15s %-8s %-10s %-8s\n", "Routeur", "IP", "Métrique", "Bande Pass.", "État");
-    printf("--------------------------------------------------------\n");
-
-    for (int i = 0; i < neighbor_count; i++)
-    {
-        printf("%-15s %-15s %-8d %-10d %-8s\n",
-               neighbors[i].router_id,
-               neighbors[i].ip_address,
-               neighbors[i].metric,
-               neighbors[i].bandwidth_mbps,
-               neighbors[i].link_state ? "UP" : "DOWN");
-    }
-
-    pthread_mutex_unlock(&neighbor_mutex);
 }
 
 // Fonction pour afficher la table de routage
@@ -135,4 +92,25 @@ void check_system_status()
     printf("Routes: %d\n", route_count);
     printf("Interfaces: %d\n", interface_count);
     printf("======================\n");
+}
+// Fonction pour afficher la table des voisins
+void show_neighbors()
+{
+    pthread_mutex_lock(&neighbor_mutex);
+
+    printf("\n=== Table des voisins ===\n");
+    printf("%-15s %-15s %-8s %-10s %-8s\n", "Routeur", "IP", "Métrique", "Bande Pass.", "État");
+    printf("--------------------------------------------------------\n");
+
+    for (int i = 0; i < neighbor_count; i++)
+    {
+        printf("%-15s %-15s %-8d %-10d %-8s\n",
+               neighbors[i].router_id,
+               neighbors[i].ip_address,
+               neighbors[i].metric,
+               neighbors[i].bandwidth_mbps,
+               neighbors[i].link_state ? "UP" : "DOWN");
+    }
+
+    pthread_mutex_unlock(&neighbor_mutex);
 }
