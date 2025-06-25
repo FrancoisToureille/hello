@@ -4,7 +4,7 @@
 #include <time.h>
 #include <arpa/inet.h>
 #include <pthread.h>
-
+#include <stdlib.h>
 #include "types.h"
 #include "hello.h"
 #include "lsa.h"
