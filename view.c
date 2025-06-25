@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <pthread.h>
 
-void afficher_voisins()
+void voirVoisins()
 {
     pthread_mutex_lock(&mutex_voisins);
 

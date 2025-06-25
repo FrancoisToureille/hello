@@ -906,6 +906,7 @@ void initialize_own_lsa()
     pthread_mutex_unlock(&topology_mutex);
 }
 
+
 // Fonction pour afficher la table des voisins
 void show_neighbors()
 {

@@ -80,7 +80,7 @@ void construire_table_routage(dijkstra_node_t *noeuds, int nb_noeuds, int index_
     }
 }
 
-void mettre_a_jour_table_kernel()
+void maj_routing_table()
 {
     // Supprimer uniquement les routes non locales (prochain_saut différent de 0.0.0.0)
     system("ip route flush table 100");
@@ -107,7 +107,7 @@ void mettre_a_jour_table_kernel()
     pthread_mutex_unlock(&mutex_routage);
 }
 
-void supprimer_voisins_expires()
+void supprimerVoisins()
 {
     pthread_mutex_lock(&mutex_voisins);
     time_t maintenant = time(NULL);

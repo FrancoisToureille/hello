@@ -1,5 +1,5 @@
 #pragma once
-void signal_handler(int sig);
+void gestion_signal(int sig);
 void lock_all_mutexes(void);
 void unlock_all_mutexes(void);
 void *listen_thread(void *arg);

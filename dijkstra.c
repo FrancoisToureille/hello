@@ -198,13 +198,11 @@ void calculate_shortest_paths()
     initialize_direct_neighbors(nodes, node_count);
     run_dijkstra(nodes, node_count);
 
-    // build_routing_table() à implémenter : construit table_routage à partir des nodes calculés
     construire_table_routage(nodes, node_count, source_index);
 
     unlock_all_mutexes();
 
-    // update_kernel_routing_table() à implémenter : met à jour la table de routage système
-    update_kernel_routing_table();
+    maj_routing_table();
 
     printf("🗺️  Table de routage mise à jour (%d routes calculées avec Dijkstra)\n", nombre_routes);
 }

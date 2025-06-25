@@ -29,7 +29,7 @@ extern pthread_mutex_t mutex_routage;
 
 extern pthread_mutex_t mutex_voisins;
 
-void signal_handler(int sig)
+void gestion_signal(int sig)
 {
     en_fonctionnement = 0;
     printf("\nArrêt en cours..\n");

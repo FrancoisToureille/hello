@@ -35,7 +35,7 @@ pthread_mutex_t mutex_routage = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_topologie = PTHREAD_MUTEX_INITIALIZER;
 
 // Prototypes
-void mettre_a_jour_table_kernel(void);
+void maj_routing_table(void);
 void gerer_message_hello(const char *message, const char *ip_expediteur);
 void gerer_message_lsa(const char *message, const char *ip_expediteur);
 void diffuser_lsa(const char *message_lsa);
@@ -49,7 +49,7 @@ void *thread_hello(void *arg);
 void *lsa_thread(void *arg);
 void initialize_own_lsa(void);
 void voirVoisins(void);
-void show_routing_table(void);
+void afficher_table_routage(void);
 int send_message(const char *msg);
 
 int main(int argc, char *argv[])
@@ -142,7 +142,7 @@ int main(int argc, char *argv[])
 
             if (pthread_mutex_timedlock(&mutex_routage, &delai) == 0)
             {
-                show_routing_table();
+                afficher_table_routage();
                 pthread_mutex_unlock(&mutex_routage);
             }
             else
