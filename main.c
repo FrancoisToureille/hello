@@ -110,7 +110,7 @@ int main(int argc, char *argv[])
         if (strcmp(input, "voisins") == 0) {
             voirVoisins();
         } else if (strcmp(input, "stop") == 0) {
-            system("ip route flush table 50");
+            system("ip route flush table 100");
             break;
         } else if (strcmp(input, "routes") == 0) {
             printf("🔄 Calcul des routes...\n");

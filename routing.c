@@ -80,7 +80,7 @@ void build_routing_table(dijkstra_node_t *nodes, int node_count, int source_inde
 void update_kernel_routing_table()
 {
     // Ne supprime que les routes dont le next-hop n'est pas 0.0.0.0 (pas les locales)
-    system("ip route flush table 50");
+    system("ip route flush table 100");
     pthread_mutex_lock(&routing_mutex);
     for (int i = 0; i < route_count; i++)
     {
