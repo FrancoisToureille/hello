@@ -998,27 +998,25 @@ void flood_lsa(const char *lsa_message, const char *sender_ip)
     if (flood_sock < 0)
         return;
 
-    pthread_mutex_lock(&neighbor_mutex);
-    for (int i = 0; i < neighbor_count; i++)
+    for (int i = 0; i < interface_count; i++)
     {
-        if (neighbors[i].link_state == 1 &&
-            strcmp(neighbors[i].ip_address, sender_ip) != 0)
+        if (interfaces[i].is_active)
         {
-
-            struct sockaddr_in neighbor_addr;
-            memset(&neighbor_addr, 0, sizeof(neighbor_addr));
-            neighbor_addr.sin_family = AF_INET;
-            neighbor_addr.sin_port = htons(BROADCAST_PORT);
-            neighbor_addr.sin_addr.s_addr = inet_addr(neighbors[i].ip_address);
+            struct sockaddr_in dest;
+            memset(&dest, 0, sizeof(dest));
+            dest.sin_family = AF_INET;
+            dest.sin_port = htons(BROADCAST_PORT);
+            dest.sin_addr.s_addr = inet_addr(interfaces[i].broadcast_ip);
 
             sendto(flood_sock, lsa_message, strlen(lsa_message), 0,
-                   (struct sockaddr *)&neighbor_addr, sizeof(neighbor_addr));
+                   (struct sockaddr *)&dest, sizeof(dest));
+
+            printf("📡 Flood LSA sur %s (%s)\n", interfaces[i].name, interfaces[i].broadcast_ip);
         }
     }
-    pthread_mutex_unlock(&neighbor_mutex);
+
     close(flood_sock);
 }
-
 // Function to process LSA messages
 void process_lsa_message(const char *message, const char *sender_ip)
 {
