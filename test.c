@@ -487,7 +487,7 @@ void cleanup_expired_neighbors()
     pthread_mutex_unlock(&neighbor_mutex);
 }
 
-// Thread pour échanger les LSA
+// Thread pour échanger les LSA - CORRIGÉ
 void *lsa_thread(void *arg)
 {
     char hostname[256];
@@ -500,11 +500,12 @@ void *lsa_thread(void *arg)
 
     while (running)
     {
-        // Créer et envoyer notre LSA
+        // Créer et envoyer notre LSA avec TOUTES nos interfaces
         pthread_mutex_lock(&neighbor_mutex);
 
+        // Construire le LSA avec nos voisins ET nos interfaces locales
         snprintf(lsa_message, sizeof(lsa_message), "LSA|%s|%d|%d",
-                 hostname, (int)time(NULL), neighbor_count);
+                 hostname, (int)time(NULL), neighbor_count + interface_count);
 
         // Ajouter les informations de chaque voisin
         for (int i = 0; i < neighbor_count; i++)
@@ -518,18 +519,30 @@ void *lsa_thread(void *arg)
                 strcat(lsa_message, link_info);
             }
         }
+        
+        // AJOUT CRUCIAL: Ajouter nos propres interfaces au LSA
+        for (int i = 0; i < interface_count; i++)
+        {
+            if (interfaces[i].is_active)
+            {
+                char interface_info[128];
+                snprintf(interface_info, sizeof(interface_info), "|%s,%s,%d,%d",
+                         hostname, interfaces[i].ip_address, 1, 1000);
+                strcat(lsa_message, interface_info);
+            }
+        }
 
         pthread_mutex_unlock(&neighbor_mutex);
 
         // Envoyer LSA sur toutes les interfaces
         broadcast_lsa(lsa_message);
+        printf("📡 LSA diffusé: %d voisins + %d interfaces\n", neighbor_count, interface_count);
 
         sleep(30); // Envoyer LSA toutes les 30 secondes
     }
 
     pthread_exit(NULL);
 }
-
 // Initialisation des mutex
 void lock_all_mutexes()
 {
@@ -712,17 +725,30 @@ void run_dijkstra(dijkstra_node_t *nodes, int node_count)
 
 void build_routing_table(dijkstra_node_t *nodes, int node_count, int source_index) {
     route_count = 0;
-
+    // Pour chaque routeur distant (hors soi-même)
     for (int i = 0; i < node_count; i++) {
         if (i == source_index) continue;
 
+        // Trouver le LSA correspondant dans la LSDB
         for (int j = 0; j < topology_db_size; j++) {
             if (strcmp(topology_db[j].router_id, nodes[i].router_id) != 0) continue;
 
+            // Pour chaque interface de ce routeur distant
             for (int k = 0; k < topology_db[j].num_links; k++) {
                 const char *dest_ip = topology_db[j].links[k].ip_address;
 
-                // Calcule le préfixe réseau (ex: 192.168.1.0/24)
+                // Vérifie que ce n'est pas une de nos propres interfaces
+                int is_own_ip = 0;
+                for (int m = 0; m < interface_count; m++) {
+                    if (strcmp(dest_ip, interfaces[m].ip_address) == 0) {
+                        is_own_ip = 1;
+                        break;
+                    }
+                }
+                if (is_own_ip)
+                    continue;
+
+                // Calcule le préfixe réseau (ex: 10.1.0.0/24)
                 char prefix[32];
                 strcpy(prefix, dest_ip);
                 char *last_dot = strrchr(prefix, '.');
@@ -736,21 +762,23 @@ void build_routing_table(dijkstra_node_t *nodes, int node_count, int source_inde
                         break;
                     }
                 }
-                if (already) continue;
+                if (already)
+                    continue;
 
                 // Vérifie que ce n'est pas un de nos propres réseaux locaux
                 int is_own_network = 0;
                 for (int m = 0; m < interface_count; m++) {
                     char local_prefix[32];
                     strcpy(local_prefix, interfaces[m].ip_address);
-                    char *ldot = strrchr(local_prefix, '.');
-                    if (ldot) strcpy(ldot + 1, "0/24");
+                    char *last_dot = strrchr(local_prefix, '.');
+                    if (last_dot) strcpy(last_dot + 1, "0/24");
                     if (strcmp(prefix, local_prefix) == 0) {
                         is_own_network = 1;
                         break;
                     }
                 }
-                if (is_own_network) continue;
+                if (is_own_network)
+                    continue;
 
                 // Ajoute la route
                 if (route_count < MAX_ROUTES) {
@@ -803,6 +831,7 @@ void calculate_shortest_paths()
     printf("🗺️  Table de routage mise à jour (%d routes calculées avec Dijkstra)\n", route_count);
 }
 
+// Fonction pour créer notre propre LSA dans la base de données - CORRIGÉE
 void initialize_own_lsa()
 {
     char hostname[256];
@@ -847,36 +876,35 @@ void initialize_own_lsa()
                 int link_idx = topology_db[our_lsa_index].num_links;
                 topology_db[our_lsa_index].links[link_idx] = neighbors[i];
                 topology_db[our_lsa_index].num_links++;
-                printf("🤝 LSA: voisin %s (%s)\n",
-                       neighbors[i].router_id,
-                       neighbors[i].ip_address);
             }
         }
         pthread_mutex_unlock(&neighbor_mutex);
-
-        // Ajouter nos propres interfaces locales
+        
+        // AJOUT CRUCIAL: Ajouter nos propres interfaces au LSA local
         for (int i = 0; i < interface_count && topology_db[our_lsa_index].num_links < MAX_NEIGHBORS; i++)
         {
-            neighbor_t link;
-            memset(&link, 0, sizeof(link));
-            strncpy(link.router_id, hostname, sizeof(link.router_id) - 1);
-            strncpy(link.ip_address, interfaces[i].ip_address, sizeof(link.ip_address) - 1);
-            strncpy(link.interface, interfaces[i].name, sizeof(link.interface) - 1);
-            link.metric = 0;
-            link.bandwidth_mbps = 1000;
-            link.link_state = 1;
-
-            topology_db[our_lsa_index].links[topology_db[our_lsa_index].num_links++] = link;
-
-            printf("🌐 LSA: interface locale %s (%s)\n",
-                   interfaces[i].name,
-                   interfaces[i].ip_address);
+            if (interfaces[i].is_active)
+            {
+                int link_idx = topology_db[our_lsa_index].num_links;
+                neighbor_t interface_link;
+                memset(&interface_link, 0, sizeof(interface_link));
+                
+                strcpy(interface_link.router_id, hostname);
+                strcpy(interface_link.ip_address, interfaces[i].ip_address);
+                strcpy(interface_link.interface, interfaces[i].name);
+                interface_link.metric = 1;
+                interface_link.bandwidth_mbps = 1000;
+                interface_link.link_state = 1;
+                interface_link.last_hello = time(NULL);
+                
+                topology_db[our_lsa_index].links[link_idx] = interface_link;
+                topology_db[our_lsa_index].num_links++;
+            }
         }
     }
 
     pthread_mutex_unlock(&topology_mutex);
 }
-
 
 // Fonction pour afficher la table des voisins
 void show_neighbors()
@@ -989,26 +1017,28 @@ void flood_lsa(const char *lsa_message, const char *sender_ip)
     if (flood_sock < 0)
         return;
 
-    for (int i = 0; i < interface_count; i++)
+    pthread_mutex_lock(&neighbor_mutex);
+    for (int i = 0; i < neighbor_count; i++)
     {
-        if (interfaces[i].is_active)
+        if (neighbors[i].link_state == 1 &&
+            strcmp(neighbors[i].ip_address, sender_ip) != 0)
         {
-            struct sockaddr_in dest;
-            memset(&dest, 0, sizeof(dest));
-            dest.sin_family = AF_INET;
-            dest.sin_port = htons(BROADCAST_PORT);
-            dest.sin_addr.s_addr = inet_addr(interfaces[i].broadcast_ip);
+
+            struct sockaddr_in neighbor_addr;
+            memset(&neighbor_addr, 0, sizeof(neighbor_addr));
+            neighbor_addr.sin_family = AF_INET;
+            neighbor_addr.sin_port = htons(BROADCAST_PORT);
+            neighbor_addr.sin_addr.s_addr = inet_addr(neighbors[i].ip_address);
 
             sendto(flood_sock, lsa_message, strlen(lsa_message), 0,
-                   (struct sockaddr *)&dest, sizeof(dest));
-
-            printf("📡 Flood LSA sur %s (%s)\n", interfaces[i].name, interfaces[i].broadcast_ip);
+                   (struct sockaddr *)&neighbor_addr, sizeof(neighbor_addr));
         }
     }
-
+    pthread_mutex_unlock(&neighbor_mutex);
     close(flood_sock);
 }
-// Function to process LSA messages
+
+// Function to process LSA messages - CORRIGÉE
 void process_lsa_message(const char *message, const char *sender_ip)
 {
     // Format: LSA|router_id|timestamp|num_links|router_id,ip,metric,bandwidth|...
@@ -1028,17 +1058,9 @@ void process_lsa_message(const char *message, const char *sender_ip)
     if (!lsa_router_id || !lsa_timestamp_str || !lsa_num_links_str)
         return;
 
-    // Ignorer nos propres LSA
-    char hostname[256];
-    if (gethostname(hostname, sizeof(hostname)) != 0)
-        strcpy(hostname, "Unknown");
-
-    if (strcmp(lsa_router_id, hostname) == 0)
-    {
-        printf("🔇 Ignoré LSA de moi-même (%s)\n", hostname);
-        return;
-    }
-
+    // SUPPRESSION DE LA VÉRIFICATION QUI IGNORAIT NOS PROPRES LSA
+    // Cette vérification empêchait la propagation des informations sur nos interfaces
+    
     int lsa_num_links = atoi(lsa_num_links_str);
 
     lsa_t new_lsa;
@@ -1047,18 +1069,22 @@ void process_lsa_message(const char *message, const char *sender_ip)
     new_lsa.timestamp = atoi(lsa_timestamp_str);
     new_lsa.num_links = 0;
 
+    // Parser tous les liens du LSA
     for (int i = 0; i < lsa_num_links; i++)
     {
         char *link_str = strtok_r(NULL, "|", &saveptr);
         if (!link_str)
             break;
+        
         char *field_ptr;
         char *router_id = strtok_r(link_str, ",", &field_ptr);
         char *ip = strtok_r(NULL, ",", &field_ptr);
         char *metric_str = strtok_r(NULL, ",", &field_ptr);
         char *bw_str = strtok_r(NULL, ",", &field_ptr);
+        
         if (!router_id || !ip || !metric_str || !bw_str)
             continue;
+            
         neighbor_t link;
         memset(&link, 0, sizeof(link));
         strncpy(link.router_id, router_id, sizeof(link.router_id) - 1);
@@ -1066,10 +1092,31 @@ void process_lsa_message(const char *message, const char *sender_ip)
         link.metric = atoi(metric_str);
         link.bandwidth_mbps = atoi(bw_str);
         link.link_state = 1;
+        
+        // Déterminer l'interface pour ce lien
+        for (int j = 0; j < interface_count; j++) {
+            // Vérifier si l'IP est sur le même réseau que cette interface
+            char interface_network[32], link_network[32];
+            strcpy(interface_network, interfaces[j].ip_address);
+            strcpy(link_network, ip);
+            
+            char *dot = strrchr(interface_network, '.');
+            if (dot) strcpy(dot + 1, "0");
+            dot = strrchr(link_network, '.');
+            if (dot) strcpy(dot + 1, "0");
+            
+            if (strcmp(interface_network, link_network) == 0) {
+                strcpy(link.interface, interfaces[j].name);
+                break;
+            }
+        }
+        
         new_lsa.links[new_lsa.num_links++] = link;
     }
+    
     int updated = 0;
     pthread_mutex_lock(&topology_mutex);
+    
     int found = -1;
     for (int i = 0; i < topology_db_size; i++)
     {
@@ -1079,26 +1126,38 @@ void process_lsa_message(const char *message, const char *sender_ip)
             if (new_lsa.timestamp > topology_db[i].timestamp)
             {
                 topology_db[i] = new_lsa;
-                updated = 1; // LSDB modifiée
+                updated = 1;
             }
             found = 1;
             break;
         }
     }
+    
     if (found == -1 && topology_db_size < MAX_NEIGHBORS)
     {
         topology_db[topology_db_size++] = new_lsa;
         updated = 1;
     }
+    
     pthread_mutex_unlock(&topology_mutex);
 
-    // NE recalculer/flooder QUE si la LSDB a changé
+    // Recalculer et flooder seulement si la LSDB a changé
     if (updated)
     {
+        printf("📊 LSA mis à jour pour %s (%d liens)\n", lsa_router_id, lsa_num_links);
         calculate_shortest_paths();
-        flood_lsa(message, sender_ip);
+        
+        // Vérifier si ce n'est pas notre propre LSA avant de flooder
+        char hostname[256];
+        if (gethostname(hostname, sizeof(hostname)) != 0)
+            strcpy(hostname, "Unknown");
+            
+        if (strcmp(lsa_router_id, hostname) != 0) {
+            flood_lsa(message, sender_ip);
+        }
     }
 }
+
 void update_kernel_routing_table()
 {
     // Ne supprime que les routes dont le next-hop n'est pas 0.0.0.0 (pas les locales)
