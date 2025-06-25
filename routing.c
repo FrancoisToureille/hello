@@ -94,7 +94,8 @@ void update_kernel_routing_table()
         snprintf(cmd, sizeof(cmd),
                  "ip route replace %s via %s dev",
                  routing_table[i].destination,
-                 routing_table[i].next_hop);
+                 routing_table[i].next_hop,
+                routing_table[i].interface);
         printf("🛣️  Ajout route OSPF : %s\n", cmd);
         int ret = system(cmd);
         if (ret != 0) {
