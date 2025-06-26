@@ -6,38 +6,37 @@
 #include "types.h"
 #include "routing.h"
 
-// Initialiser les nœuds avec la topologie et les voisins
-int initialize_nodes(dijkstra_node_t *nodes)
+int initializer_noeuds_dijkstra(noeud_dijkstra_t *nodes)
 {
     int node_count = 0;
 
     for (int i = 0; i < topology_db_size; i++)
     {
-        strcpy(nodes[node_count].router_id, topology_db[i].router_id);
+        strcpy(nodes[node_count].id_routeur, topology_db[i].id_routeur);
         if (topology_db[i].num_links > 0)
         {
-            strcpy(nodes[node_count].ip_address, topology_db[i].links[0].ip_address);
+            strcpy(nodes[node_count].adresse_ip, topology_db[i].links[0].adresse_ip);
         }
         else
         {
-            nodes[node_count].ip_address[0] = '\0';
+            nodes[node_count].adresse_ip[0] = '\0';
         }
         nodes[node_count].distance = INT_MAX;
         nodes[node_count].next_hop[0] = '\0';
         nodes[node_count].interface[0] = '\0';
         nodes[node_count].visited = 0;
-        nodes[node_count].bandwidth = 0;
+        nodes[node_count].bande_passante = 0;
         node_count++;
     }
 
     for (int i = 0; i < neighbor_count; i++)
     {
-        if (neighbors[i].link_state == 1)
+        if (neighbors[i].etat_lien == 1)
         {
             int found = 0;
             for (int j = 0; j < node_count; j++)
             {
-                if (strcmp(nodes[j].router_id, neighbors[i].router_id) == 0)
+                if (strcmp(nodes[j].id_routeur, neighbors[i].id_routeur) == 0)
                 {
                     found = 1;
                     break;
@@ -45,13 +44,13 @@ int initialize_nodes(dijkstra_node_t *nodes)
             }
             if (!found && node_count < MAX_NEIGHBORS)
             {
-                strcpy(nodes[node_count].router_id, neighbors[i].router_id);
-                strcpy(nodes[node_count].ip_address, neighbors[i].ip_address);
+                strcpy(nodes[node_count].id_routeur, neighbors[i].id_routeur);
+                strcpy(nodes[node_count].adresse_ip, neighbors[i].adresse_ip);
                 nodes[node_count].distance = INT_MAX;
                 nodes[node_count].next_hop[0] = '\0';
                 nodes[node_count].interface[0] = '\0';
                 nodes[node_count].visited = 0;
-                nodes[node_count].bandwidth = 0;
+                nodes[node_count].bande_passante = 0;
                 node_count++;
             }
         }
@@ -59,11 +58,11 @@ int initialize_nodes(dijkstra_node_t *nodes)
 
     return node_count;
 }
-int find_source_index(dijkstra_node_t *nodes, int node_count, const char *hostname)
+int trouver_racine(noeud_dijkstra_t *nodes, int node_count, const char *hostname)
 {
     for (int i = 0; i < node_count; i++)
     {
-        if (strcmp(nodes[i].router_id, hostname) == 0)
+        if (strcmp(nodes[i].id_routeur, hostname) == 0)
         {
             return i;
         }
@@ -72,21 +71,21 @@ int find_source_index(dijkstra_node_t *nodes, int node_count, const char *hostna
 }
 
 
-void initialize_direct_neighbors(dijkstra_node_t *nodes, int node_count)
+void initialiser_voisins(noeud_dijkstra_t *nodes, int node_count)
 {
     for (int i = 0; i < neighbor_count; i++)
     {
-        if (neighbors[i].link_state == 1)
+        if (neighbors[i].etat_lien == 1)
         {
             for (int j = 0; j < node_count; j++)
             {
-                if (strcmp(nodes[j].router_id, neighbors[i].router_id) == 0)
+                if (strcmp(nodes[j].id_routeur, neighbors[i].id_routeur) == 0)
                 {
-                    int metric = neighbors[i].metric + (1000 / neighbors[i].bandwidth_mbps);
-                    nodes[j].distance = metric;
-                    strcpy(nodes[j].next_hop, neighbors[i].ip_address);
+                    int metrique = neighbors[i].metrique + (1000 / neighbors[i].bandwidth_mbps);
+                    nodes[j].distance = metrique;
+                    strcpy(nodes[j].next_hop, neighbors[i].adresse_ip);
                     strcpy(nodes[j].interface, neighbors[i].interface);
-                    nodes[j].bandwidth = neighbors[i].bandwidth_mbps;
+                    nodes[j].bande_passante = neighbors[i].bandwidth_mbps;
                     break;
                 }
             }
@@ -95,7 +94,7 @@ void initialize_direct_neighbors(dijkstra_node_t *nodes, int node_count)
 }
 
 
-void run_dijkstra(dijkstra_node_t *nodes, int node_count)
+void dijkstra(noeud_dijkstra_t *nodes, int node_count)
 {
     for (int count = 0; count < node_count - 1; count++)
     {
@@ -119,7 +118,7 @@ void run_dijkstra(dijkstra_node_t *nodes, int node_count)
         lsa_t *current_lsa = NULL;
         for (int i = 0; i < topology_db_size; i++)
         {
-            if (strcmp(topology_db[i].router_id, nodes[min_index].router_id) == 0)
+            if (strcmp(topology_db[i].id_routeur, nodes[min_index].id_routeur) == 0)
             {
                 current_lsa = &topology_db[i];
                 break;
@@ -134,7 +133,7 @@ void run_dijkstra(dijkstra_node_t *nodes, int node_count)
             int neighbor_index = -1;
             for (int j = 0; j < node_count; j++)
             {
-                if (strcmp(nodes[j].router_id, current_lsa->links[i].router_id) == 0)
+                if (strcmp(nodes[j].id_routeur, current_lsa->links[i].id_routeur) == 0)
                 {
                     neighbor_index = j; 
                     break;
@@ -143,7 +142,7 @@ void run_dijkstra(dijkstra_node_t *nodes, int node_count)
 
             if (neighbor_index >= 0 && !nodes[neighbor_index].visited)
             {
-                int link_cost = current_lsa->links[i].metric + (1000 / current_lsa->links[i].bandwidth_mbps);
+                int link_cost = current_lsa->links[i].metrique + (1000 / current_lsa->links[i].bandwidth_mbps);
                 int new_distance = nodes[min_index].distance + link_cost;
 
                 if (new_distance < nodes[neighbor_index].distance)
@@ -152,15 +151,15 @@ void run_dijkstra(dijkstra_node_t *nodes, int node_count)
 
                     if (nodes[min_index].distance == 0)
                     {
-                        strcpy(nodes[neighbor_index].next_hop, current_lsa->links[i].ip_address);
+                        strcpy(nodes[neighbor_index].next_hop, current_lsa->links[i].adresse_ip);
                         strcpy(nodes[neighbor_index].interface, current_lsa->links[i].interface);
-                        nodes[neighbor_index].bandwidth = current_lsa->links[i].bandwidth_mbps;
+                        nodes[neighbor_index].bande_passante = current_lsa->links[i].bandwidth_mbps;
                     }
                     else
                     {
                         strcpy(nodes[neighbor_index].next_hop, nodes[min_index].next_hop);
                         strcpy(nodes[neighbor_index].interface, nodes[min_index].interface);
-                        nodes[neighbor_index].bandwidth = nodes[min_index].bandwidth;
+                        nodes[neighbor_index].bande_passante = nodes[min_index].bande_passante;
                     }
                 }
             }
@@ -168,24 +167,20 @@ void run_dijkstra(dijkstra_node_t *nodes, int node_count)
     }
 }
 
-// Fonction principale refactorisée
-void calculate_shortest_paths()
+void calcul_chemins()
 {
-    printf("🔧 DEBUG: Début calcul des chemins\n");
     lock_all_mutexes();
-
     char hostname[256];
     if (gethostname(hostname, sizeof(hostname)) != 0)
     {
         strcpy(hostname, "Unknown");
     }
-
     route_count = 0;
 
-    dijkstra_node_t nodes[MAX_NEIGHBORS];
-    int node_count = initialize_nodes(nodes);
+    noeud_dijkstra_t nodes[MAX_NEIGHBORS];
+    int node_count = initializer_noeuds_dijkstra(nodes);
 
-    int source_index = find_source_index(nodes, node_count, hostname);
+    int source_index = trouver_racine(nodes, node_count, hostname);
     if (source_index < 0)
     {
         unlock_all_mutexes();
@@ -193,12 +188,12 @@ void calculate_shortest_paths()
     }
 
     nodes[source_index].distance = 0;
-    initialize_direct_neighbors(nodes, node_count);
-    run_dijkstra(nodes, node_count);
-    build_routing_table(nodes, node_count, source_index);
+    initialiser_voisins(nodes, node_count);
+    dijkstra(nodes, node_count);
+    construite_table_routage(nodes, node_count, source_index);
 
     unlock_all_mutexes();
 
-    update_kernel_routing_table();
-    printf("🗺️  Table de routage mise à jour (%d routes calculées avec Dijkstra)\n", route_count);
+    maj_table_routage();
+    printf("Table de routage mise à jour\n");
 }

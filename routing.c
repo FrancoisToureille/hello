@@ -7,43 +7,34 @@
 #include "types.h"
 #include "routing.h"
 
-// Initialisation des mutex
 void lock_all_mutexes()
 {
     pthread_mutex_lock(&neighbor_mutex);
-    printf("🔧 DEBUG: neighbor_mutex verrouillé\n");
     pthread_mutex_lock(&topology_mutex);
-    printf("🔧 DEBUG: topology_mutex verrouillé\n");
     pthread_mutex_lock(&routing_mutex);
-    printf("🔧 DEBUG: routing_mutex verrouillé\n");
 }
 
 void unlock_all_mutexes()
 {
-    printf("🔧 DEBUG: Fin calcul des chemins - déverrouillage\n");
     pthread_mutex_unlock(&routing_mutex);
     pthread_mutex_unlock(&topology_mutex);
     pthread_mutex_unlock(&neighbor_mutex);
 }
 
-void build_routing_table(dijkstra_node_t *nodes, int node_count, int source_index) {
+void construite_table_routage(noeud_dijkstra_t *nodes, int node_count, int source_index) {
     route_count = 0;
-    // Pour chaque routeur distant (hors soi-même)
     for (int i = 0; i < node_count; i++) {
         if (i == source_index) continue;
 
-        // Trouver le LSA correspondant dans la LSDB
         for (int j = 0; j < topology_db_size; j++) {
-            if (strcmp(topology_db[j].router_id, nodes[i].router_id) != 0) continue;
+            if (strcmp(topology_db[j].id_routeur, nodes[i].id_routeur) != 0) continue;
 
-            // Pour chaque interface de ce routeur distant
             for (int k = 0; k < topology_db[j].num_links; k++) {
-                const char *dest_ip = topology_db[j].links[k].ip_address;
+                const char *dest_ip = topology_db[j].links[k].adresse_ip;
 
-                // Vérifie que ce n'est pas une de nos propres interfaces
                 int is_own_ip = 0;
                 for (int m = 0; m < interface_count; m++) {
-                    if (strcmp(dest_ip, interfaces[m].ip_address) == 0) {
+                    if (strcmp(dest_ip, interfaces[m].adresse_ip) == 0) {
                         is_own_ip = 1;
                         break;
                     }
@@ -51,13 +42,11 @@ void build_routing_table(dijkstra_node_t *nodes, int node_count, int source_inde
                 if (is_own_ip)
                     continue;
 
-                // Calcule le préfixe réseau (ex: 10.1.0.0/24)
                 char prefix[32];
                 strcpy(prefix, dest_ip);
                 char *last_dot = strrchr(prefix, '.');
                 if (last_dot) strcpy(last_dot + 1, "0/24");
 
-                // Vérifie qu'on n'a pas déjà ajouté cette destination (évite les doublons)
                 int already = 0;
                 for (int r = 0; r < route_count; r++) {
                     if (strcmp(routing_table[r].destination, prefix) == 0) {
@@ -68,11 +57,10 @@ void build_routing_table(dijkstra_node_t *nodes, int node_count, int source_inde
                 if (already)
                     continue;
 
-                // Vérifie que ce n'est pas un de nos propres réseaux locaux
                 int is_own_network = 0;
                 for (int m = 0; m < interface_count; m++) {
                     char local_prefix[32];
-                    strcpy(local_prefix, interfaces[m].ip_address);
+                    strcpy(local_prefix, interfaces[m].adresse_ip);
                     char *last_dot = strrchr(local_prefix, '.');
                     if (last_dot) strcpy(last_dot + 1, "0/24");
                     if (strcmp(prefix, local_prefix) == 0) {
@@ -83,14 +71,13 @@ void build_routing_table(dijkstra_node_t *nodes, int node_count, int source_inde
                 if (is_own_network)
                     continue;
 
-                // Ajoute la route
                 if (route_count < MAX_ROUTES) {
                     strcpy(routing_table[route_count].destination, prefix);
                     strcpy(routing_table[route_count].next_hop, nodes[i].next_hop);
                     strcpy(routing_table[route_count].interface, nodes[i].interface);
-                    routing_table[route_count].metric = nodes[i].distance + topology_db[j].links[k].metric;
-                    routing_table[route_count].hop_count = (routing_table[route_count].metric + 999) / 1000;
-                    routing_table[route_count].bandwidth = topology_db[j].links[k].bandwidth_mbps;
+                    routing_table[route_count].metrique = nodes[i].distance + topology_db[j].links[k].metrique;
+                    routing_table[route_count].nombre_de_saut = (routing_table[route_count].metrique + 999) / 1000;
+                    routing_table[route_count].bande_passante = topology_db[j].links[k].bandwidth_mbps;
                     route_count++;
                 }
             }
@@ -98,17 +85,14 @@ void build_routing_table(dijkstra_node_t *nodes, int node_count, int source_inde
     }
 }
 
-void update_kernel_routing_table()
+void maj_table_routage()
 {
-    // Ne supprime que les routes dont le next-hop n'est pas 0.0.0.0 (pas les locales)
     system("ip route flush table 100");
 
     pthread_mutex_lock(&routing_mutex);
     for (int i = 0; i < route_count; i++)
     {
-        // destination est une IP
         char cmd[256];
-        // N'ajoute pas de route si next_hop == 0.0.0.0 (c'est une route locale)
         if (strcmp(routing_table[i].next_hop, "0.0.0.0") == 0)
             continue;
 
@@ -121,7 +105,7 @@ void update_kernel_routing_table()
         int ret = system(cmd);
         if (ret != 0)
         {
-            printf("⚠️  Erreur lors de l'ajout de la route: %s\n", cmd);
+            printf("Erreur lors de l'ajout de la route: %s\n", cmd);
         }
     }
     pthread_mutex_unlock(&routing_mutex);
