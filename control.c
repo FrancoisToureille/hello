@@ -180,8 +180,7 @@ int envoyer_message(const char *message)
     broadcast_addr.sin_addr.s_addr = inet_addr(IP_BROADCAST);
 
     if (sendto(broadcast_sock, full_message, strlen(full_message), 0,
-               (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr)) < 0)
-    {
+               (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr)) < 0) {
         if (running)
         { 
             perror("Erreur sendto");
